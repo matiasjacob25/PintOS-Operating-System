@@ -28,6 +28,11 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* List of processes in BLOCKED state as a result of sleeping.
+   That is, processes are removed from this list and unblocked
+   when they reach their corresponding wake up time*/
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -92,6 +97,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -137,6 +143,40 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+}
+
+/* Puts running thread to sleep by adding it to sleep_list
+   and blocking the thread. Interrupts must be disabled when 
+   manipulating thread list. */
+void 
+thread_sleep(int64_t ticks) 
+{
+  // disable interrupts before calling thread_block
+  enum intr_level old_level = intr_disable ();
+  struct thread *cur = thread_current();
+  cur->wakeup_tick = ticks;
+  list_push_back (&sleep_list, &cur->elem);
+  thread_block();
+  intr_set_level (old_level);
+}
+
+void
+wake_up_sleeping_threads (void)
+{
+  int ticks = timer_ticks();
+
+  struct list_elem *e;
+  for (e = list_begin (&sleep_list); e != list_end (&sleep_list); 
+  e = list_next (e))
+  {
+    struct thread *t = list_entry (e, struct thread, elem);
+    // if ticks is beyond wakeup_tick, 
+    // remove thread from sleep_list and add to ready list
+    if (ticks >= t->wakeup_tick) {
+      list_remove(e);
+      thread_unblock(t);
+    }
+  }
 }
 
 /* Prints thread statistics. */

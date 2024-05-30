@@ -100,6 +100,7 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    int64_t wakeup_tick;                /* Wake up tick */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -138,4 +139,6 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+void thread_sleep (int64_t wakeup_tick);
+void wake_up_sleeping_threads (void);
 #endif /* threads/thread.h */
