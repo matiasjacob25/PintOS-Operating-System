@@ -156,7 +156,7 @@ thread_sleep (int64_t ticks)
   struct thread *cur = thread_current ();
 
   cur->wakeup_tick = ticks;
-  list_insert_back(&sleep_list, &cur->elem);
+  list_push_back(&sleep_list, &cur->elem);
   global_tick = ticks < global_tick ? ticks : global_tick;
   thread_block ();
   intr_set_level (old_level);
