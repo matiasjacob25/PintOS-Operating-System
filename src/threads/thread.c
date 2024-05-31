@@ -28,6 +28,10 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* List of processes in sleeping state, that is, processes
+   that are sleeping and waiting to be woken up. */
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -58,6 +62,9 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+/* The global tick that stores the minimum tick of the threads in the sleep list */
+int64_t global_tick = INT64_MAX;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -92,6 +99,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -137,6 +145,53 @@ thread_tick (void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+}
+
+/* Sleeps the current thread for at least TICKS timer ticks.
+   Interrupts must be disabled during thread manipulation. */
+void
+thread_sleep (int64_t ticks)
+{
+  enum intr_level old_level = intr_disable ();
+  struct thread *cur = thread_current ();
+
+  cur->wakeup_tick = ticks;
+  list_insert_back(&sleep_list, &cur->elem);
+  global_tick = ticks < global_tick ? ticks : global_tick;
+  thread_block ();
+  intr_set_level (old_level);
+}
+
+/* Wakes up the sleeping threads whose wakeup_tick is less than or equal to the current tick. 
+And update global tick to the minimum tick of the threads in updated sleeping threads*/
+void
+thread_wakeup ()
+{
+  enum intr_level old_level = intr_disable ();
+  struct list_elem *e;
+  struct thread *t;
+  int64_t global_tick = INT64_MAX;
+  int64_t current_tick = timer_ticks ();
+
+  for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e))
+  {
+    t = list_entry (e, struct thread, elem);
+    if (t->wakeup_tick <= current_tick)
+    {
+      e = list_remove (e);
+      thread_unblock (t);
+    }
+    else
+    {
+      global_tick = t->wakeup_tick < global_tick ? t->wakeup_tick : global_tick;
+    }
+  }
+
+  if (list_empty(&sleep_list)) {
+      global_tick = INT64_MAX;
+  }
+
+  intr_set_level (old_level);
 }
 
 /* Prints thread statistics. */

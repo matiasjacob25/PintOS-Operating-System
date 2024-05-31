@@ -100,12 +100,16 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    int64_t wakeup_tick;                /* Tick to wake up the thread. */
   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+/* The global tick that stores the minimum tick of the threads in the sleep list */
+extern int64_t global_tick;
 
 void thread_init (void);
 void thread_start (void);
@@ -137,5 +141,9 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+//Sleep/wakeup a threads to/from the sleep list
+void thread_sleep (int64_t wakeup_tick);
+void thread_wakeup (int64_t current_tick);
 
 #endif /* threads/thread.h */
