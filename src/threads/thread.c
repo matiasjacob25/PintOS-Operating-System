@@ -168,12 +168,12 @@ void
 thread_wakeup ()
 {
   enum intr_level old_level = intr_disable ();
-  struct list_elem *e;
+  struct list_elem *e = list_begin (&sleep_list);
   struct thread *t;
   int64_t global_tick = INT64_MAX;
   int64_t current_tick = timer_ticks ();
 
-  for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e))
+  while (e != list_end (&sleep_list))
   {
     t = list_entry (e, struct thread, elem);
     if (t->wakeup_tick <= current_tick)
@@ -184,6 +184,7 @@ thread_wakeup ()
     else
     {
       global_tick = t->wakeup_tick < global_tick ? t->wakeup_tick : global_tick;
+      e = list_next (e);
     }
   }
 
