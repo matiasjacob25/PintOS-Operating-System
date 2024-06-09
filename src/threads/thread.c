@@ -70,9 +70,6 @@ bool thread_mlfqs;
 /* The global tick that stores the minimum tick of the threads in the sleep list */
 int64_t global_tick = INT64_MAX;
 
-/* The global tick that stores the minimum tick of the threads in the sleep list */
-int64_t global_tick = INT64_MAX;
-
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -182,7 +179,6 @@ thread_wakeup ()
   enum intr_level old_level = intr_disable ();
   struct list_elem *e = list_begin (&sleep_list);
   struct thread *t;
-  int64_t global_tick = INT64_MAX;
   int64_t current_tick = timer_ticks ();
 
   while (e != list_end (&sleep_list))
