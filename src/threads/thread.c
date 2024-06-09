@@ -32,6 +32,10 @@ static struct list all_list;
    that are sleeping and waiting to be woken up. */
 static struct list sleep_list;
 
+/* List of processes in sleeping state, that is, processes
+   that are sleeping and waiting to be woken up. */
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -62,6 +66,9 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
+/* The global tick that stores the minimum tick of the threads in the sleep list */
+int64_t global_tick = INT64_MAX;
 
 /* The global tick that stores the minimum tick of the threads in the sleep list */
 int64_t global_tick = INT64_MAX;
@@ -99,6 +106,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
   list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
@@ -152,54 +160,50 @@ thread_tick (void)
 }
 
 /* Sleeps the current thread for at least TICKS timer ticks.
-   Interrupts should be disabled during sleep_list mainpulation. */
+   Interrupts must be disabled during thread manipulation. */
 void
-thread_sleep (int64_t sleep_until)
+thread_sleep (int64_t ticks)
 {
-  ASSERT (!intr_context ());
-  ASSERT (intr_get_level () == INTR_OFF);
-  
+  enum intr_level old_level = intr_disable ();
   struct thread *cur = thread_current ();
-  cur->wakeup_tick = sleep_until;
+
+  cur->wakeup_tick = ticks;
   list_push_back(&sleep_list, &cur->elem);
-  global_tick = sleep_until < global_tick ? sleep_until : global_tick;
+  global_tick = ticks < global_tick ? ticks : global_tick;
   thread_block ();
+  intr_set_level (old_level);
 }
 
 /* Wakes up the sleeping threads whose wakeup_tick is less than or equal to the current tick. 
 And update global tick to the minimum tick of the threads in updated sleeping threads*/
 void
-wakeup_threads ()
+thread_wakeup ()
 {
   enum intr_level old_level = intr_disable ();
-  struct list_elem *e;
+  struct list_elem *e = list_begin (&sleep_list);
   struct thread *t;
-  // int64_t global_tick = INT64_MAX;
+  int64_t global_tick = INT64_MAX;
   int64_t current_tick = timer_ticks ();
 
-  for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e))
+  while (e != list_end (&sleep_list))
   {
     t = list_entry (e, struct thread, elem);
-    // printf("curr_thread: name=%s", t->name);
-    // printf("next_thread: name=%s", list_entry(t->elem.next, struct thread, elem)->name);
-    // printf("prev_thread: name=%s", list_entry(t->elem.prev, struct thread, elem)->name);
-
     if (t->wakeup_tick <= current_tick)
     {
       e = list_remove (e);
       thread_unblock (t);
-      // break early if tail is reached in sleep_list to avoid running list_next on tail
-      if (e == list_end(&sleep_list)){ break; }
     }
     else
     {
       global_tick = t->wakeup_tick < global_tick ? t->wakeup_tick : global_tick;
+      e = list_next (e);
     }
   }
 
   if (list_empty(&sleep_list)) {
       global_tick = INT64_MAX;
   }
+
   intr_set_level (old_level);
 }
 

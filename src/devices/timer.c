@@ -184,7 +184,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
   if (ticks >= global_tick)
   {
-    wakeup_threads();
+    thread_wakeup();
   }
 }
 
