@@ -118,6 +118,9 @@ sema_up (struct semaphore *sema)
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
+  // yield, if popped thread has higher priority than currently running thread
+  thread_yield();
+
   intr_set_level (old_level);
 }
 
@@ -250,7 +253,7 @@ lock_release (struct lock *lock)
   enum intr_level old_level = intr_disable();
 
   struct list *priority_donors = &(lock->holder->priority_donors);
-  int highest_priority;
+  int max_priority;
 
   // Remove highest priority donor from lock holder's donor list.
   // Then, if donor list is empty, reset thread's priority to its base_priority.
@@ -262,8 +265,8 @@ lock_release (struct lock *lock)
     struct thread *front = list_entry(list_front(&lock->semaphore.waiters), struct thread, elem);
     if (front->priority == lock->holder->priority){
       list_pop_front(priority_donors);
-      highest_priority = list_empty(priority_donors) ? lock->holder->base_priority : list_entry(list_max(priority_donors, has_greater_priority, NULL), struct thread, elem)->priority;
-      thread_set_priority(highest_priority);
+      max_priority = list_empty(priority_donors) ? lock->holder->base_priority : list_entry(list_max(priority_donors, has_greater_priority, NULL), struct thread, elem)->priority;
+      thread_set_priority(max_priority);
     }
   }
 

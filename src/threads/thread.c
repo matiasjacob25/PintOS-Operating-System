@@ -283,7 +283,7 @@ thread_donate_priority(struct thread *t)
   t->priority = donor->priority;
   list_insert_ordered(&t->priority_donors, &donor->elem, has_greater_priority, NULL);
 
-  // recursively donate the priority to thread that the lock holder is donating to. 
+  // recursively donate the priority to thread that the lock holder is waiting for. 
   if (waiting_on_lock){ thread_donate_priority(waiting_on_lock->holder); }
 }
 

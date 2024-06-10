@@ -98,9 +98,9 @@ struct thread
 
     // project 1 properties
     int64_t wakeup_tick;                /* Tick to wake up the thread. */
-    struct list priority_donors;        /* list of priority donors */
     int base_priority;                  /* priority of thread prior to donations */
-    struct lock *waiting_for;          /* lock that the blocked thread is waiting for */
+    struct list priority_donors;        /* list of priority donors */
+    struct lock *waiting_for;           /* lock that the blocked thread is waiting for */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
