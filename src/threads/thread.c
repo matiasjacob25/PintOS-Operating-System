@@ -104,17 +104,12 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleep_list);
-  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
-  
-  // project 1 properties
-  list_init(&(initial_thread->priority_donors));
-  initial_thread->base_priority = PRI_DEFAULT;  
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -161,14 +156,14 @@ thread_tick (void)
 void
 thread_sleep (int64_t ticks)
 {
-  enum intr_level old_level = intr_disable ();
+  ASSERT (intr_get_level () == INTR_OFF);
+
   struct thread *cur = thread_current ();
 
   cur->wakeup_tick = ticks;
   list_push_back(&sleep_list, &cur->elem);
   global_tick = ticks < global_tick ? ticks : global_tick;
   thread_block ();
-  intr_set_level (old_level);
 }
 
 /* Wakes up the sleeping threads whose wakeup_tick is less than or equal to the current tick. 
@@ -263,10 +258,35 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   /* Add to run queue. */
-  thread_unblock (t);
+    thread_unblock (t);
+    
+  // yield CPU if the new thread has higher priority than
+  // the currently running thread
+  if (thread_current()->priority < priority){
+    thread_yield();
+  }
 
   return tid;
 }
+
+/* Donates the priority of the currently running thread to t 
+   and the holder of the lock that t is waiting for. */
+void
+thread_donate_priority(struct thread *t)
+{
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  struct thread *donor = thread_current();
+  struct lock *waiting_on_lock = t->waiting_for;
+
+  // update thread t's priority and add donor to its priority_donors list
+  t->priority = donor->priority;
+  list_insert_ordered(&t->priority_donors, &donor->elem, has_greater_priority, NULL);
+
+  // recursively donate the priority to thread that the lock holder is donating to. 
+  if (waiting_on_lock){ thread_donate_priority(waiting_on_lock->holder); }
+}
+
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
@@ -287,13 +307,16 @@ thread_block (void)
 /*
 little_less_func implementation used when running list_insert_ordered into 
 ready_list based on priority. Compares the value of list elements threadA and 
-threadB, given auxiliary data AUX. Returns true if threadA's priority is greater
-than or equal to threadB's priority. Otherwise, returns false.
+threadB, given auxiliary data AUX. Returns true if threadA's priority is less
+than threadB's priority. Otherwise, returns false.
 */
 bool has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
+  // // return false if comparing a to tail of the list
+  // if (b->next == NULL){ return false; }
+
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
-  return thread_a->priority >= thread_b->priority;
+  return thread_a->priority > thread_b->priority;
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -419,6 +442,7 @@ void
 thread_set_priority (int new_priority) 
 {
   enum intr_level old_level = intr_disable();
+
   struct thread *curr = thread_current();
   curr->priority = new_priority;
 
@@ -560,7 +584,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
   // project 1 properties
   t->base_priority = priority;  
-  list_init(&(t->priority_donors));
+  list_init(&t->priority_donors);
+  t->waiting_for = NULL; 
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

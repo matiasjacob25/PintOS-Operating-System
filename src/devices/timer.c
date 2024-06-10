@@ -93,13 +93,6 @@ timer_sleep (int64_t ticks)
   
   ASSERT (intr_get_level () == INTR_ON);
 
-  // while (timer_elapsed (start) < ticks) 
-  //   thread_yield ();
-  // if (timer_elapsed (start) < ticks)
-  // {
-  //   thread_sleep (start + ticks);
-  // }
-
   // disable interrupts to insert into sleep_list and block atomically
   enum intr_level old_level = intr_disable ();
   if (ticks > 0) { thread_sleep (start + ticks); }

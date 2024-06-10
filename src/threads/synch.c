@@ -69,7 +69,7 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       // ensure high to low priority ordering when inserting into waiters list
-      list_insert_ordered(&sema->waiters, &thread_current ()->elem, has_greater_priority, NULL);
+      list_insert_ordered(&sema->waiters, &thread_current()->elem, has_greater_priority, NULL);
       thread_block ();
     }
   sema->value--;
@@ -197,42 +197,23 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  // sema_down (&lock->semaphore);
-  // lock->holder = thread_current ();
-
   // solution attempt
+  struct thread *curr = thread_current();
 
-  // lock is currently held by another thread
+  // lock is already held by another thread
   if (lock->holder){
-    if (lock->holder->priority < thread_current()->priority)
+    curr->waiting_for = lock;
+    if (curr->priority > lock->holder->priority)
     {
-      // donate priority and add donor to holder's donor list - useful for handling multiple donation
-      lock->holder->priority = thread_current()->priority;
-      list_insert_ordered(&lock->holder->priority_donors, lock->holder, has_greater_priority, NULL);
+      // donate priority to lock holder and any other threads lock->holder is donating priority to
+      enum intr_level old_level = intr_disable();
+      thread_donate_priority(lock->holder);
+      intr_set_level(old_level);
     }
   }
+
   sema_down (&lock->semaphore);
-  lock->holder = thread_current();
-
-  /*
-    Example:
-    - t1 acquires L1,L2,L3
-    - t2 acquires L1, but is blocked
-    - t3 acquires L2, but is blocked
-    - t4 acquires L3, but is blocked
-
-    - each time a thread attempts to acquire, but fails, t1 checks whether that thread has a higher priority than itself
-
-    - Suppose t4 has highest priority.
-    - When t1 releases L3 and unblocks t4, update its priority to max(t2->priority, t3->priority).
-      - need some form of donors list that t1 can have access to. The elements of this list will store the threads
-        that are currently donating their priority. If this list is empty, then assume t1 has its original priority.
-    */
-
-
-
-
-
+  lock->holder = curr;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -266,12 +247,31 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  // restore thread's priority prior to donations
   enum intr_level old_level = intr_disable();
-  
-  lock->holder->priority = lock->holder->base_priority;
-  lock->holder = NULL;
+
+  struct list *priority_donors = &(lock->holder->priority_donors);
+  int highest_priority;
+
+  // Remove highest priority donor from lock holder's donor list.
+  // Then, if donor list is empty, reset thread's priority to its base_priority.
+  // Otherwise, update currently running thread's priority to the next highest priority donor.
+  if (!list_empty(&lock->semaphore.waiters) && !list_empty(priority_donors))
+  {
+    // Should only pop from priority list if the thread that is waiting for this lock has donated its priority to 
+    // the currently running thread.
+    struct thread *front = list_entry(list_front(&lock->semaphore.waiters), struct thread, elem);
+    if (front->priority == lock->holder->priority){
+      list_pop_front(priority_donors);
+      highest_priority = list_empty(priority_donors) ? lock->holder->base_priority : list_entry(list_max(priority_donors, has_greater_priority, NULL), struct thread, elem)->priority;
+      thread_set_priority(highest_priority);
+    }
+  }
+
+  // release lock
   sema_up (&lock->semaphore);
+  
+  // remove lock holder
+  lock->holder = NULL;
 
   intr_set_level(old_level);
 }

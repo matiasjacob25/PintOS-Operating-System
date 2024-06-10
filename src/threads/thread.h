@@ -100,6 +100,7 @@ struct thread
     int64_t wakeup_tick;                /* Tick to wake up the thread. */
     struct list priority_donors;        /* list of priority donors */
     int base_priority;                  /* priority of thread prior to donations */
+    struct lock *waiting_for;          /* lock that the blocked thread is waiting for */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -143,6 +144,7 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void thread_donate_priority (struct thread* t);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
