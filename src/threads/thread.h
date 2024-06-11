@@ -158,4 +158,5 @@ void thread_wakeup ();
 
 // List compare sorting functions
 bool has_greater_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux);
+bool donor_has_greater_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux);
 #endif /* threads/thread.h */

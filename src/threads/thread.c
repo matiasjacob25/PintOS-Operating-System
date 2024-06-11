@@ -288,7 +288,7 @@ thread_donate_priority(struct thread *donor)
     bool first_donation = true;
     for (e = list_begin(&holder->priority_donors); e != list_end(&holder->priority_donors); e = list_next(e))
     {
-      if (list_entry(e, struct thread, elem) == donor) {
+      if (list_entry(e, struct thread, donor_elem) == donor) {
         first_donation = false;
         break;
       }
@@ -296,7 +296,7 @@ thread_donate_priority(struct thread *donor)
 
     // if donor thread is not in the priority_donors list, insert it
     if (first_donation)
-      list_insert_ordered(&holder->priority_donors, &donor->donor_elem, has_greater_priority, NULL);
+      list_insert_ordered(&holder->priority_donors, &donor->donor_elem, donor_has_greater_priority, NULL);
 
     // recursively donate the priority to thread that the lock holder is waiting for.
     if (holder->waiting_for != NULL)
@@ -322,17 +322,26 @@ thread_block (void)
 }
 
 /*
-little_less_func implementation used when running list_insert_ordered into 
+elem variation of little_less_func implementation used when running list_insert_ordered into 
 ready_list based on priority. Compares the value of list elements threadA and 
 threadB, given auxiliary data AUX. Returns true if threadA's priority is less
 than threadB's priority. Otherwise, returns false.
 */
 bool has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
-  // // return false if comparing a to tail of the list
-  // if (b->next == NULL){ return false; }
-
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
+  return thread_a->priority > thread_b->priority;
+}
+
+/*
+donor_elem variation of little_less_func implementation used when running list_insert_ordered 
+into ready_list based on priority. Compares the value of list elements threadA and 
+threadB, given auxiliary data AUX. Returns true if threadA's priority is less
+than threadB's priority. Otherwise, returns false.
+*/
+bool donor_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
+  struct thread *thread_a = list_entry(a, struct thread, donor_elem);
+  struct thread *thread_b = list_entry(b, struct thread, donor_elem);
   return thread_a->priority > thread_b->priority;
 }
 
@@ -353,9 +362,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  // list_push_back (&ready_list, &t->elem);
+
   // maintain priority ordering when inserting thread to ready_list
   list_insert_ordered(&ready_list, &t->elem, has_greater_priority, NULL);
+  
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -426,9 +436,10 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    // list_push_back (&ready_list, &cur->elem);
+  {
     // maintain priority ordering when inserting thread to ready_list
     list_insert_ordered(&ready_list, &cur->elem, has_greater_priority, NULL);
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);

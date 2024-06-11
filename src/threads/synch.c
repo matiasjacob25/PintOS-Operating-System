@@ -114,12 +114,18 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
-  sema->value++;
-  // yield, if popped thread has higher priority than currently running thread
-  thread_yield();
+  if (!list_empty (&sema->waiters))
+  {
+    struct thread *front = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+    thread_unblock (front);
+    sema->value++;
+    
+    // yield, if popped thread has higher priority than currently running thread
+    if (front->priority > thread_current()->priority)
+      thread_yield();
+  }
+  else
+    sema->value++;
 
   intr_set_level (old_level);
 }
@@ -265,26 +271,30 @@ lock_release (struct lock *lock)
     // if yes, remove them from the priority_donors list.
     for (e1 = list_begin(&holder->priority_donors); e1 != list_end(&holder->priority_donors); e1 = list_next(e1))
     {
-      donor = list_entry(e1, struct thread, elem);
+      donor = list_entry(e1, struct thread, donor_elem);
       for (e2 = list_begin(&lock->semaphore.waiters); e2 != list_end(&lock->semaphore.waiters); e2 = list_next(e2))
       {
         waiter = list_entry(e2, struct thread, elem);
         if (donor->tid == waiter->tid && waiter->waiting_for == lock)
-          list_remove(donor);
+        {
+          // remove donor_elem from priority_donors list
+          list_remove(&donor->donor_elem);
           break;
+        }
       }
     }
 
     // update currently running thread's priority to the next highest priority donor.
-    max_priority = list_empty(&holder->priority_donors) ? holder->base_priority : list_entry(list_front(&holder->priority_donors), struct thread, elem)->priority;
+    max_priority = list_empty(&holder->priority_donors) ? holder->base_priority : list_entry(list_front(&holder->priority_donors), struct thread, donor_elem)->priority;
     thread_set_priority(max_priority);
   }
+
+  // remove lock holder
+  lock->holder = NULL;
 
   // release lock
   sema_up (&lock->semaphore);
   
-  // remove lock holder
-  lock->holder = NULL;
   intr_set_level(old_level);
 }
 
