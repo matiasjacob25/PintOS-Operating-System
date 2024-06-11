@@ -269,22 +269,39 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
-/* Donates the priority of the currently running thread to t 
-   and the holder of the lock that t is waiting for. */
+/* Donate priority to the thread that is holding the lock that
+   thread donor is waiting for. */
 void
-thread_donate_priority(struct thread *t)
+thread_donate_priority(struct thread *donor)
 {
   ASSERT (intr_get_level () == INTR_OFF);
 
-  struct thread *donor = thread_current();
-  struct lock *waiting_on_lock = t->waiting_for;
+  struct thread *holder = donor->waiting_for->holder;
 
-  // update thread t's priority and add donor to its priority_donors list
-  t->priority = donor->priority;
-  list_insert_ordered(&t->priority_donors, &donor->elem, has_greater_priority, NULL);
+  // donate if the holder has lower priority
+  if (donor->priority > holder->priority)
+  {
+    holder->priority = donor->priority;
 
-  // recursively donate the priority to thread that the lock holder is waiting for. 
-  if (waiting_on_lock){ thread_donate_priority(waiting_on_lock->holder); }
+    // check if the donor thread already exists in holder's priority_donors list
+    struct list_elem *e;
+    bool first_donation = true;
+    for (e = list_begin(&holder->priority_donors); e != list_end(&holder->priority_donors); e = list_next(e))
+    {
+      if (list_entry(e, struct thread, elem) == donor) {
+        first_donation = false;
+        break;
+      }
+    }
+
+    // if donor thread is not in the priority_donors list, insert it
+    if (first_donation)
+      list_insert_ordered(&holder->priority_donors, &donor->elem, has_greater_priority, NULL);
+
+    // recursively donate the priority to thread that the lock holder is waiting for.
+    if (holder->waiting_for != NULL)
+      thread_donate_priority(holder);
+  }
 }
 
 
