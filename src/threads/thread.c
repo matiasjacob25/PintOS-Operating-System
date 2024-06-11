@@ -296,7 +296,7 @@ thread_donate_priority(struct thread *donor)
 
     // if donor thread is not in the priority_donors list, insert it
     if (first_donation)
-      list_insert_ordered(&holder->priority_donors, &donor->elem, has_greater_priority, NULL);
+      list_insert_ordered(&holder->priority_donors, &donor->donor_elem, has_greater_priority, NULL);
 
     // recursively donate the priority to thread that the lock holder is waiting for.
     if (holder->waiting_for != NULL)
