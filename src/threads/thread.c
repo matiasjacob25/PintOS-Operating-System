@@ -365,7 +365,7 @@ thread_unblock (struct thread *t)
 
   // maintain priority ordering when inserting thread to ready_list
   list_insert_ordered(&ready_list, &t->elem, has_greater_priority, NULL);
-  
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -471,12 +471,21 @@ thread_set_priority (int new_priority)
 {
   enum intr_level old_level = intr_disable();
 
-  struct thread *curr = thread_current();
-  curr->priority = new_priority;
+  struct thread *cur = thread_current();
+
+  // if new_priority decreases current priority, but current thread has priority_donors,
+  // set base_priority so that actual priority only decreases when held locks are released.
+  if (!list_empty(&cur->priority_donors) && new_priority < cur->base_priority){
+    cur->base_priority = new_priority;
+  } 
+  else{
+    cur->priority = new_priority;
+    cur->base_priority = new_priority;
+  }
 
   // yield if next thread in ready_list has higher_priority than new_priority
   if (!list_empty(&ready_list) && 
-  list_entry(list_front(&ready_list), struct thread, elem)->priority > curr->priority)
+  list_entry(list_front(&ready_list), struct thread, elem)->priority > cur->priority)
   {
     thread_yield();
   }
