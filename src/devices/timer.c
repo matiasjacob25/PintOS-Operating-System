@@ -17,6 +17,9 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
+/* Global lock to prevent race conditions when modifying sleep_list. */
+struct lock sleep_lock;
+
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
@@ -37,6 +40,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  lock_init (&sleep_lock);  
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */

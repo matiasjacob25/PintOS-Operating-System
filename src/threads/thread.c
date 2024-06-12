@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -157,7 +158,9 @@ thread_sleep (int64_t ticks)
   struct thread *cur = thread_current ();
 
   cur->wakeup_tick = ticks;
+  lock_acquire (&sleep_lock);
   list_push_back(&sleep_list, &cur->elem);
+  lock_release (&sleep_lock);
   global_tick = ticks < global_tick ? ticks : global_tick;
   thread_block ();
 }
@@ -184,7 +187,8 @@ thread_wakeup ()
     }
     else
     {
-      global_tick = t->wakeup_tick < global_tick ? t->wakeup_tick : global_tick;
+      global_tick = t->wakeup_tick < global_tick ? 
+      t->wakeup_tick : global_tick;
       e = list_next (e);
     }
   }

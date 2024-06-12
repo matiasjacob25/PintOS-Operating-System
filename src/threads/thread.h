@@ -114,7 +114,8 @@ struct thread
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
-/* The global tick that stores the minimum tick of the threads in the sleep list */
+/* The global tick that stores the minimum 
+   tick of the threads in the sleep list */
 extern int64_t global_tick;
 
 void thread_init (void);
@@ -154,6 +155,8 @@ void thread_sleep (int64_t wakeup_tick);
 void thread_wakeup (void);
 
 // List compare sorting functions
-bool has_greater_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux);
-bool donor_has_greater_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux);
+bool has_greater_priority (const struct list_elem *a_, 
+  const struct list_elem *b_, void *aux);
+bool donor_has_greater_priority (const struct list_elem *a_, 
+  const struct list_elem *b_, void *aux);
 #endif /* threads/thread.h */
