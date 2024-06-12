@@ -398,9 +398,9 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
 /*
 semaphore_elem variation of little_less_func implementation used when running list_insert_ordered 
-into conditional variable's waiters list based on priority. Compares the value of list elements threadA and 
-threadB, given auxiliary data AUX. Returns true if threadA's priority is less
-than threadB's priority. Otherwise, returns false.
+into conditional variable's waiters list based on priority. Compares the value of list elements semaA and 
+semaB, given auxiliary data AUX. Returns true if semaA's priority is less
+than semaB's priority. Otherwise, returns false.
 */
 bool sema_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
   struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
