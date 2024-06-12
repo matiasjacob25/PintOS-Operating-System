@@ -67,7 +67,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-/* The global tick that stores the minimum tick of the threads in the sleep list */
+/* Global tick that stores the minimum tick of the threads in the sleep list */
 int64_t global_tick = INT64_MAX;
 
 static void kernel_thread (thread_func *, void *aux);
@@ -287,10 +287,12 @@ thread_donate_priority(struct thread *donor)
   {
     holder->priority = donor->priority;
 
-    // check if the donor thread already exists in holder's priority_donors list
+    // check if donor thread already exists in holder's priority_donors list
     struct list_elem *e;
     bool first_donation = true;
-    for (e = list_begin(&holder->priority_donors); e != list_end(&holder->priority_donors); e = list_next(e))
+    for (e = list_begin(&holder->priority_donors);
+         e != list_end(&holder->priority_donors);
+         e = list_next(e))
     {
       if (list_entry(e, struct thread, donor_elem) == donor)
       {
@@ -301,9 +303,10 @@ thread_donate_priority(struct thread *donor)
 
     // if donor thread is not in the priority_donors list, insert it
     if (first_donation)
-      list_insert_ordered(&holder->priority_donors, &donor->donor_elem, donor_has_greater_priority, NULL);
+      list_insert_ordered(&holder->priority_donors, &donor->donor_elem,
+                          donor_has_greater_priority, NULL);
 
-    // recursively donate the priority to thread that the lock holder is waiting for.
+    // recursively donate priority to thread that lock holder is waiting for.
     if (holder->waiting_for != NULL)
       thread_donate_priority(holder);
   }
@@ -327,13 +330,15 @@ thread_block (void)
 }
 
 /*
-elem variation of little_less_func implementation used when running list_insert_ordered into 
-ready_list based on priority. Compares the value of list elements threadA and 
-threadB, given auxiliary data AUX. Returns true if threadA's priority is less
-than threadB's priority. Otherwise, returns false.
+elem variation of little_less_func implementation used when running 
+list_insert_ordered into ready_list based on priority. Compares the 
+value of list elements threadA and threadB, given auxiliary data AUX. 
+Returns true if threadA's priority is lessthan threadB's priority. 
+Otherwise, returns false.
 */
 bool
-has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+has_greater_priority(const struct list_elem *a, const struct list_elem *b,
+                     void *aux)
 {
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
@@ -341,13 +346,16 @@ has_greater_priority(const struct list_elem *a, const struct list_elem *b, void 
 }
 
 /*
-donor_elem variation of little_less_func implementation used when running list_insert_ordered 
-into a thread's priority_donors list based on priority. Compares the value of list elements 
-threadA and threadB, given auxiliary data AUX. Returns true if threadA's priority is less
-than threadB's priority. Otherwise, returns false.
+donor_elem variation of little_less_func implementation used when running 
+list_insert_ordered into a thread's priority_donors list based on priority.
+Compares the value of list elements threadA and threadB, given auxiliary 
+data AUX. Returns true if threadA's priority is lessthan threadB's priority. 
+Otherwise, returns false.
 */
 bool
-donor_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+donor_has_greater_priority(const struct list_elem *a,
+                           const struct list_elem *b,
+                           void *aux)
 {
   struct thread *thread_a = list_entry(a, struct thread, donor_elem);
   struct thread *thread_b = list_entry(b, struct thread, donor_elem);
@@ -482,19 +490,23 @@ thread_set_priority (int new_priority)
 
   struct thread *cur = thread_current();
 
-  // if new_priority decreases current priority, but current thread has priority_donors,
-  // set base_priority so that actual priority only decreases when held locks are released.
-  if (!list_empty(&cur->priority_donors) && new_priority < cur->base_priority){
+  // if new_priority decreases current priority, but current thread has 
+  // priority_donors, set base_priority so that actual priority only 
+  // decreases when held locks are released.
+  if (!list_empty(&cur->priority_donors) && new_priority < cur->base_priority)
+  {
     cur->base_priority = new_priority;
   } 
-  else{
+  else
+  {
     cur->priority = new_priority;
     cur->base_priority = new_priority;
   }
 
   // yield if next thread in ready_list has higher_priority than new_priority
-  if (!list_empty(&ready_list) && 
-  list_entry(list_front(&ready_list), struct thread, elem)->priority > cur->priority)
+  if (!list_empty(&ready_list)
+      && (list_entry(list_front(&ready_list), struct thread, elem)->priority
+      > cur->priority))
   {
     thread_yield();
   }

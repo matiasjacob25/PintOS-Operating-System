@@ -69,7 +69,8 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       // ensure high to low priority ordering when inserting into waiters list
-      list_insert_ordered(&sema->waiters, &thread_current()->elem, has_greater_priority, NULL);
+      list_insert_ordered(&sema->waiters, &thread_current()->elem,
+                          has_greater_priority, NULL);
       thread_block ();
     }
   sema->value--;
@@ -116,13 +117,14 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters))
   {
-    // sort to catch possible changes in thread_priorities from priority donations
+    // sort to catch changes in thread_priorities from priority donations
     list_sort(&sema->waiters, has_greater_priority, NULL);
-    struct thread *front = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+    struct thread *front = list_entry (list_pop_front (&sema->waiters),
+                                                       struct thread, elem);
     thread_unblock (front);
     sema->value++;
     
-    // yield, if popped thread has higher priority than currently running thread
+    // yield if popped thread has higher priority than currently running thread
     if (front->priority > thread_current()->priority)
       thread_yield();
   }
@@ -257,8 +259,9 @@ lock_release (struct lock *lock)
   enum intr_level old_level = intr_disable();
   struct thread *cur = thread_current();
 
-  //remove donors associated with the released lock from the priority_donors list
-  if (!list_empty(&cur->priority_donors)){
+  //remove donors associated with the released lock from priority_donors list
+  if (!list_empty(&cur->priority_donors))
+  {
     struct list_elem *e = list_begin(&cur->priority_donors);
     struct thread *donor;
     while (e != list_end(&cur->priority_donors)) 
@@ -276,16 +279,19 @@ lock_release (struct lock *lock)
   {
     struct list_elem *t;
     struct thread *waiter;
-    for (t = list_begin(&lock->semaphore.waiters); t != list_end(&lock->semaphore.waiters); t = list_next(t))
+    for (t = list_begin(&lock->semaphore.waiters);
+         t != list_end(&lock->semaphore.waiters);
+         t = list_next(t))
     {
       waiter = list_entry(t, struct thread, elem);
       waiter->waiting_for = NULL;
     }
   }
 
-  // update currently running thread's priority to the next highest priority donor.
+  // update currently running thread's priority to next highest priority donor.
   cur->priority = list_empty(&cur->priority_donors) ? cur->base_priority : 
-  list_entry(list_front(&cur->priority_donors), struct thread, donor_elem)->priority;
+  list_entry(list_front(&cur->priority_donors),
+                        struct thread, donor_elem)->priority;
 
   // remove lock holder
   lock->holder = NULL;
@@ -310,9 +316,9 @@ lock_held_by_current_thread (const struct lock *lock)
 /* One semaphore in a list. */
 struct semaphore_elem 
   {
-    struct list_elem elem;              /* List element. */
-    struct semaphore semaphore;         /* This semaphore. */
-    int priority;                       /* Priority of the thread waiting on this semaphore. */
+    struct list_elem elem;       /* List element. */
+    struct semaphore semaphore;  /* This semaphore. */
+    int priority;                /* Priority of thread waiting on semaphore. */
   };
 
 /* Initializes condition variable COND.  A condition variable
@@ -359,7 +365,8 @@ cond_wait (struct condition *cond, struct lock *lock)
   sema_init (&waiter.semaphore, 0);
   waiter.priority = thread_current()->priority;
 
-  list_insert_ordered (&cond->waiters, &waiter.elem, sema_has_greater_priority, NULL);
+  list_insert_ordered (&cond->waiters, &waiter.elem,
+                       sema_has_greater_priority, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -405,10 +412,12 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 semaphore_elem variation of little_less_func implementation used when running
 list_insert_ordered into conditional variable's waiters list based on priority. 
 Compares the value of list elements semaA and semaB, given auxiliary data AUX. 
-Returns true if semaA's priority is less than semaB's priority. Otherwise, returns false.
+Returns true if semaA's priority is less than semaB's priority.
+Otherwise, returns false.
 */
 bool
-sema_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+sema_has_greater_priority(const struct list_elem *a, const struct list_elem *b,
+                          void *aux)
 {
   struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
   struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
