@@ -490,17 +490,19 @@ thread_set_priority (int new_priority)
 
   struct thread *cur = thread_current();
 
-  // if new_priority decreases current priority, but current thread has 
-  // priority_donors, set base_priority so that actual priority only 
-  // decreases when held locks are released.
-  if (!list_empty(&cur->priority_donors) && new_priority < cur->base_priority)
+  //update base priority
+  cur->base_priority = new_priority;
+  
+  // if the thread has donors, the effective priority should be the 
+  // max(new_priority, max(donors_priority) )
+  if (!list_empty(&cur->priority_donors))
   {
-    cur->base_priority = new_priority;
+    struct thread *max_donor = list_entry(list_front(&cur->priority_donors), struct thread, donor_elem);
+    cur->priority = new_priority > max_donor->priority ? new_priority : max_donor->priority;
   } 
   else
   {
     cur->priority = new_priority;
-    cur->base_priority = new_priority;
   }
 
   // yield if next thread in ready_list has higher_priority than new_priority
