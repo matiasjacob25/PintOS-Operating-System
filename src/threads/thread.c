@@ -335,8 +335,8 @@ bool has_greater_priority(const struct list_elem *a, const struct list_elem *b, 
 
 /*
 donor_elem variation of little_less_func implementation used when running list_insert_ordered 
-into ready_list based on priority. Compares the value of list elements threadA and 
-threadB, given auxiliary data AUX. Returns true if threadA's priority is less
+into a thread's priority_donors list based on priority. Compares the value of list elements 
+threadA and threadB, given auxiliary data AUX. Returns true if threadA's priority is less
 than threadB's priority. Otherwise, returns false.
 */
 bool donor_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
