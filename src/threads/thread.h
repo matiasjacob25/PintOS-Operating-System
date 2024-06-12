@@ -117,9 +117,6 @@ extern bool thread_mlfqs;
 /* The global tick that stores the minimum tick of the threads in the sleep list */
 extern int64_t global_tick;
 
-/* The global tick that stores the minimum tick of the threads in the sleep list */
-extern int64_t global_tick;
-
 void thread_init (void);
 void thread_start (void);
 
