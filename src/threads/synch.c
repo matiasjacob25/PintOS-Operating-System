@@ -116,6 +116,8 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters))
   {
+    // sort to catch possible changes in thread_priorities from priority donations
+    list_sort(&sema->waiters, has_greater_priority, NULL);
     struct thread *front = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
     thread_unblock (front);
     sema->value++;
