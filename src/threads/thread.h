@@ -154,7 +154,7 @@ int thread_get_load_avg (void);
 
 // Sleep/wakeup a thread to/from the sleep list
 void thread_sleep (int64_t wakeup_tick);
-void thread_wakeup ();
+void thread_wakeup (void);
 
 // List compare sorting functions
 bool has_greater_priority (const struct list_elem *a_, const struct list_elem *b_, void *aux);

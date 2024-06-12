@@ -255,7 +255,6 @@ lock_release (struct lock *lock)
 
   enum intr_level old_level = intr_disable();
   struct thread *cur = thread_current();
-  int new_priority;
 
   //remove donors associated with the released lock from the priority_donors list
   if (!list_empty(&cur->priority_donors)){
