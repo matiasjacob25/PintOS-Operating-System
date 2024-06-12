@@ -32,10 +32,6 @@ static struct list all_list;
    that are sleeping and waiting to be woken up. */
 static struct list sleep_list;
 
-/* List of processes in sleeping state, that is, processes
-   that are sleeping and waiting to be woken up. */
-static struct list sleep_list;
-
 /* Idle thread. */
 static struct thread *idle_thread;
 
