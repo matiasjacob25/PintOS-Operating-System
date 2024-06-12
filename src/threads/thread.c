@@ -166,8 +166,10 @@ thread_sleep (int64_t ticks)
   thread_block ();
 }
 
-/* Wakes up the sleeping threads whose wakeup_tick is less than or equal to the current tick. 
-And update global tick to the minimum tick of the threads in updated sleeping threads*/
+/* Wakes up the sleeping threads whose wakeup_tick is less than or equal
+to the current tick. And update global tick to the minimum tick of the 
+threads in updated sleeping threads
+*/
 void
 thread_wakeup ()
 {
@@ -191,7 +193,8 @@ thread_wakeup ()
     }
   }
 
-  if (list_empty(&sleep_list)) {
+  if (list_empty(&sleep_list))
+  {
       global_tick = INT64_MAX;
   }
 
@@ -262,8 +265,9 @@ thread_create (const char *name, int priority,
     
   // yield CPU if the new thread has higher priority than
   // the currently running thread
-  if (thread_current()->priority < priority){
-    thread_yield();
+  if (thread_current()->priority < priority)
+  {
+      thread_yield();
   }
 
   return tid;
@@ -288,7 +292,8 @@ thread_donate_priority(struct thread *donor)
     bool first_donation = true;
     for (e = list_begin(&holder->priority_donors); e != list_end(&holder->priority_donors); e = list_next(e))
     {
-      if (list_entry(e, struct thread, donor_elem) == donor) {
+      if (list_entry(e, struct thread, donor_elem) == donor)
+      {
         first_donation = false;
         break;
       }
@@ -327,7 +332,9 @@ ready_list based on priority. Compares the value of list elements threadA and
 threadB, given auxiliary data AUX. Returns true if threadA's priority is less
 than threadB's priority. Otherwise, returns false.
 */
-bool has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
+bool
+has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
   return thread_a->priority > thread_b->priority;
@@ -339,7 +346,9 @@ into a thread's priority_donors list based on priority. Compares the value of li
 threadA and threadB, given auxiliary data AUX. Returns true if threadA's priority is less
 than threadB's priority. Otherwise, returns false.
 */
-bool donor_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
+bool
+donor_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
   struct thread *thread_a = list_entry(a, struct thread, donor_elem);
   struct thread *thread_b = list_entry(b, struct thread, donor_elem);
   return thread_a->priority > thread_b->priority;

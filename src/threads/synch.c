@@ -211,7 +211,8 @@ lock_acquire (struct lock *lock)
   struct thread *cur = thread_current();
 
   // lock is already held by another thread
-  if (lock->holder != NULL){
+  if (lock->holder != NULL)
+  {
     cur->waiting_for = lock;
     enum intr_level old_level = intr_disable();
     thread_donate_priority(cur);
@@ -260,7 +261,8 @@ lock_release (struct lock *lock)
   if (!list_empty(&cur->priority_donors)){
     struct list_elem *e = list_begin(&cur->priority_donors);
     struct thread *donor;
-    while (e != list_end(&cur->priority_donors)) {
+    while (e != list_end(&cur->priority_donors)) 
+    {
       donor = list_entry(e, struct thread, donor_elem);
       if(donor->waiting_for == lock)
         e = list_remove(e);
@@ -270,10 +272,12 @@ lock_release (struct lock *lock)
   }
 
   //set the waiting_lock of threads in waiter list to NULL
-  if (!list_empty(&lock->semaphore.waiters)){
+  if (!list_empty(&lock->semaphore.waiters))
+  {
     struct list_elem *t;
     struct thread *waiter;
-    for (t = list_begin(&lock->semaphore.waiters); t != list_end(&lock->semaphore.waiters); t = list_next(t)) {
+    for (t = list_begin(&lock->semaphore.waiters); t != list_end(&lock->semaphore.waiters); t = list_next(t))
+    {
       waiter = list_entry(t, struct thread, elem);
       waiter->waiting_for = NULL;
     }
@@ -398,12 +402,14 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 }
 
 /*
-semaphore_elem variation of little_less_func implementation used when running list_insert_ordered 
-into conditional variable's waiters list based on priority. Compares the value of list elements semaA and 
-semaB, given auxiliary data AUX. Returns true if semaA's priority is less
-than semaB's priority. Otherwise, returns false.
+semaphore_elem variation of little_less_func implementation used when running
+list_insert_ordered into conditional variable's waiters list based on priority. 
+Compares the value of list elements semaA and semaB, given auxiliary data AUX. 
+Returns true if semaA's priority is less than semaB's priority. Otherwise, returns false.
 */
-bool sema_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
+bool
+sema_has_greater_priority(const struct list_elem *a, const struct list_elem *b, void *aux)
+{
   struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
   struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
   return sema_a->priority > sema_b->priority;
