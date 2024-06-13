@@ -178,25 +178,25 @@ thread_wakeup ()
   int64_t current_tick = timer_ticks ();
 
   while (e != list_end (&sleep_list))
-  {
-    t = list_entry (e, struct thread, elem);
-    if (t->wakeup_tick <= current_tick)
     {
-      e = list_remove (e);
-      thread_unblock (t);
+      t = list_entry (e, struct thread, elem);
+      if (t->wakeup_tick <= current_tick)
+        {
+          e = list_remove (e);
+          thread_unblock (t);
+        }
+      else
+        {
+          global_tick = t->wakeup_tick < global_tick ? 
+          t->wakeup_tick : global_tick;
+          e = list_next (e);
+        }
     }
-    else
-    {
-      global_tick = t->wakeup_tick < global_tick ? 
-      t->wakeup_tick : global_tick;
-      e = list_next (e);
-    }
-  }
 
   if (list_empty(&sleep_list))
-  {
-      global_tick = INT64_MAX;
-  }
+    {
+        global_tick = INT64_MAX;
+    }
 
   intr_set_level (old_level);
 }
@@ -266,9 +266,9 @@ thread_create (const char *name, int priority,
   // yield CPU if the new thread has higher priority than
   // the currently running thread
   if (thread_current()->priority < priority)
-  {
-      thread_yield();
-  }
+    {
+        thread_yield();
+    }
 
   return tid;
 }
@@ -284,32 +284,32 @@ thread_donate_priority(struct thread *donor)
 
   // donate if the holder has lower priority
   if (donor->priority > holder->priority)
-  {
-    holder->priority = donor->priority;
-
-    // check if donor thread already exists in holder's priority_donors list
-    struct list_elem *e;
-    bool first_donation = true;
-    for (e = list_begin(&holder->priority_donors);
-         e != list_end(&holder->priority_donors);
-         e = list_next(e))
     {
-      if (list_entry(e, struct thread, donor_elem) == donor)
-      {
-        first_donation = false;
-        break;
-      }
+      holder->priority = donor->priority;
+
+      // check if donor thread already exists in holder's priority_donors list
+      struct list_elem *e;
+      bool first_donation = true;
+      for (e = list_begin(&holder->priority_donors);
+           e != list_end(&holder->priority_donors);
+           e = list_next(e))
+        {
+          if (list_entry(e, struct thread, donor_elem) == donor)
+            {
+              first_donation = false;
+              break;
+            }
+        }
+
+      // if donor thread is not in the priority_donors list, insert it
+      if (first_donation)
+        list_insert_ordered(&holder->priority_donors, &donor->donor_elem,
+                            donor_has_greater_priority, NULL);
+
+      // recursively donate priority to thread that lock holder is waiting for.
+      if (holder->waiting_for != NULL)
+        thread_donate_priority(holder);
     }
-
-    // if donor thread is not in the priority_donors list, insert it
-    if (first_donation)
-      list_insert_ordered(&holder->priority_donors, &donor->donor_elem,
-                          donor_has_greater_priority, NULL);
-
-    // recursively donate priority to thread that lock holder is waiting for.
-    if (holder->waiting_for != NULL)
-      thread_donate_priority(holder);
-  }
 }
 
 
@@ -453,10 +453,10 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-  {
-    // maintain priority ordering when inserting thread to ready_list
-    list_insert_ordered(&ready_list, &cur->elem, has_greater_priority, NULL);
-  }
+    {
+      // maintain priority ordering when inserting thread to ready_list
+      list_insert_ordered(&ready_list, &cur->elem, has_greater_priority, NULL);
+    }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -496,22 +496,24 @@ thread_set_priority (int new_priority)
   // if the thread has donors, the effective priority should be the 
   // max(new_priority, max(donors_priority) )
   if (!list_empty(&cur->priority_donors))
-  {
-    struct thread *max_donor = list_entry(list_front(&cur->priority_donors), struct thread, donor_elem);
-    cur->priority = new_priority > max_donor->priority ? new_priority : max_donor->priority;
-  } 
+    {
+      struct thread *max_donor = list_entry(list_front(&cur->priority_donors), 
+                                            struct thread, donor_elem);
+      cur->priority = new_priority > max_donor->priority ? 
+                                     new_priority : max_donor->priority;
+    } 
   else
-  {
-    cur->priority = new_priority;
-  }
+    {
+      cur->priority = new_priority;
+    }
 
   // yield if next thread in ready_list has higher_priority than new_priority
   if (!list_empty(&ready_list)
       && (list_entry(list_front(&ready_list), struct thread, elem)->priority
       > cur->priority))
-  {
-    thread_yield();
-  }
+    {
+      thread_yield();
+    }
 
   intr_set_level(old_level);
 }

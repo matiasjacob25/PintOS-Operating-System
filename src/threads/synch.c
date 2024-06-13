@@ -116,18 +116,18 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters))
-  {
-    // sort to catch changes in thread_priorities from priority donations
-    list_sort(&sema->waiters, has_greater_priority, NULL);
-    struct thread *front = list_entry (list_pop_front (&sema->waiters),
-                                                       struct thread, elem);
-    thread_unblock (front);
-    sema->value++;
-    
-    // yield if popped thread has higher priority than currently running thread
-    if (front->priority > thread_current()->priority)
-      thread_yield();
-  }
+    {
+      // sort to catch changes in thread_priorities from priority donations
+      list_sort(&sema->waiters, has_greater_priority, NULL);
+      struct thread *front = list_entry (list_pop_front (&sema->waiters),
+                                                        struct thread, elem);
+      thread_unblock (front);
+      sema->value++;
+      
+      // yield if popped thread has higher priority than current running thread
+      if (front->priority > thread_current()->priority)
+        thread_yield();
+    }
   else
     sema->value++;
 
@@ -214,12 +214,12 @@ lock_acquire (struct lock *lock)
 
   // lock is already held by another thread
   if (lock->holder != NULL)
-  {
-    cur->waiting_for = lock;
-    enum intr_level old_level = intr_disable();
-    thread_donate_priority(cur);
-    intr_set_level(old_level);
-  }
+    {
+      cur->waiting_for = lock;
+      enum intr_level old_level = intr_disable();
+      thread_donate_priority(cur);
+      intr_set_level(old_level);
+    }
 
   sema_down (&lock->semaphore);
   lock->holder = cur;
@@ -261,32 +261,32 @@ lock_release (struct lock *lock)
 
   //remove donors associated with the released lock from priority_donors list
   if (!list_empty(&cur->priority_donors))
-  {
-    struct list_elem *e = list_begin(&cur->priority_donors);
-    struct thread *donor;
-    while (e != list_end(&cur->priority_donors)) 
     {
-      donor = list_entry(e, struct thread, donor_elem);
-      if(donor->waiting_for == lock)
-        e = list_remove(e);
-      else
-        e = list_next(e);
+      struct list_elem *e = list_begin(&cur->priority_donors);
+      struct thread *donor;
+      while (e != list_end(&cur->priority_donors)) 
+        {
+          donor = list_entry(e, struct thread, donor_elem);
+          if(donor->waiting_for == lock)
+            e = list_remove(e);
+          else
+            e = list_next(e);
+        }
     }
-  }
 
   //set the waiting_lock of threads in waiter list to NULL
   if (!list_empty(&lock->semaphore.waiters))
-  {
-    struct list_elem *t;
-    struct thread *waiter;
-    for (t = list_begin(&lock->semaphore.waiters);
-         t != list_end(&lock->semaphore.waiters);
-         t = list_next(t))
     {
-      waiter = list_entry(t, struct thread, elem);
-      waiter->waiting_for = NULL;
+      struct list_elem *t;
+      struct thread *waiter;
+      for (t = list_begin(&lock->semaphore.waiters);
+          t != list_end(&lock->semaphore.waiters);
+          t = list_next(t))
+        {
+          waiter = list_entry(t, struct thread, elem);
+          waiter->waiting_for = NULL;
+        }
     }
-  }
 
   // update currently running thread's priority to next highest priority donor.
   cur->priority = list_empty(&cur->priority_donors) ? cur->base_priority : 

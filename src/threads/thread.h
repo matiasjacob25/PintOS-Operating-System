@@ -83,12 +83,12 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
+    tid_t tid;                    /* Thread identifier. */
+    enum thread_status status;    /* Thread state. */
+    char name[16];                /* Name (for debugging purposes). */
+    uint8_t *stack;               /* Saved stack pointer. */
+    int priority;                 /* Priority. */
+    struct list_elem allelem;     /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -97,11 +97,11 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
 
     // project 1 properties
-    int64_t wakeup_tick;                /* Tick to wake up the thread. */
-    int base_priority;                  /* priority of thread prior to donations */
-    struct list priority_donors;        /* list of priority donors */
-    struct lock *waiting_for;           /* lock that the blocked thread is waiting for */
-    struct list_elem donor_elem;        /* List element for priority_donors list. */
+    int64_t wakeup_tick;          /* Tick to wake up the thread. */
+    int base_priority;            /* priority of thread prior to donations */
+    struct list priority_donors;  /* list of priority donors */
+    struct lock *waiting_for;     /* lock that blocked thread is waiting for */
+    struct list_elem donor_elem;  /* List element for priority_donors list. */
 
 
 #ifdef USERPROG
