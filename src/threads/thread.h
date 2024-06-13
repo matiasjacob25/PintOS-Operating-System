@@ -89,7 +89,6 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem donor_elem;        /* List element for priority_donors list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -102,6 +101,8 @@ struct thread
     int base_priority;                  /* priority of thread prior to donations */
     struct list priority_donors;        /* list of priority donors */
     struct lock *waiting_for;           /* lock that the blocked thread is waiting for */
+    struct list_elem donor_elem;        /* List element for priority_donors list. */
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
