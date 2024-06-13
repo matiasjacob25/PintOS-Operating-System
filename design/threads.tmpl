@@ -250,6 +250,20 @@ its priority.
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
+In the original implementation, the race condition arises because there is 
+no synchronization mechanism to ensure that the priority update and the 
+donation handling are atomic. This can lead to the issues that thread A 
+donates its priority to Thread B, raising Thread B's priority. If Thread B's 
+priority is then changed directly via thread_set_priority(), the priority 
+donation might be overridden incorrectly, leading to improper scheduling. 
+Our implementation ensures that if the thread has donors, the effective 
+priority is calculated as the maximum of the new base priority and the highest
+donated priority. This preserves the priority donation mechanism and prevents 
+it from being incorrectly overridden by a direct priority change. Since this 
+race condition involves the interaction between priority donation and direct 
+priority changes of only the current thread, which is not about mutual 
+exclusion among multiple threads. Using lock doesn't help avoid in this case.
+
 ---- RATIONALE ----
 
 >> B7: Why did you choose this design?  In what ways is it superior to
