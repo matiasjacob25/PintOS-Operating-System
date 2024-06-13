@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Jacob Matias jacob.matias@mail.utoronto.ca
+Maria Gotcheva maria.gotcheva@mail.utoronto.ca
+Jerry Han jerrym.han@mail.utoronto.ca
 
 ---- PRELIMINARIES ----
 
@@ -30,26 +30,92 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+static struct list sleep_list;
+A global list of processes in sleeping state, that is, processes that are 
+sleeping, blocked, and waiting to be woken up.
+
+int64_t global_tick;
+A global variable that stores the minimum tick of the threads in the sleep 
+list.
+
+int64_t wakeup_tick;
+A new member of struct thread that specifies the tick value that the thread 
+should wake up on.
+
+extern struct lock sleep_lock;
+A global lock used to prevent race conditions when modifying sleep_list.
+
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
 
+When timer_sleep(int64_t ticks) is called, interrupts are first disabled. 
+Then, the code verifies that the ticks value is valid. If it is valid, then 
+thread_sleep() is called with an argument that determines the wakeup time for 
+the thread. In thread_sleep(), the thread’s wakeup_tick field is updated and 
+the thread is added to the sleep_list. The global_tick is also updated, if 
+possible, before the thread blocks. 
+
+The timer interrupt handler has been modified so that when it’s invoked, it 
+will only wake up threads in the sleeping_list if the global ticks value 
+ticks >= global_tick. If this is the case, then any thread with 
+wakeup_tick <= global ticks is removed from sleeping_list and unblocked. 
+The global_tick is then updated.  
+
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
+
+To minimize the amount of time spent in the timer interrupt handler, we only 
+call thread_wakeup() when global ticks >= global_tick. When this condition
+evaluates to true we can guarantee that at least one thread in the 
+sleeping_list needs to be woken up. In other words, this ensures that 
+thread_wakeup is not being invoked every tick, but instead is only invoked
+when at least one thread in the sleeping_list needs to be woken up. 
+
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
 
+When timer_sleep() is called, we are mainly concerned with multiple threads
+modifying the sleep_list simultaneously. To avoid this race condition, we 
+utilize global sleep_lock wherein a thread must lock_acquire(sleep_lock) 
+prior to modifying the sleep_list, then releases once it’s finished. This 
+ensures that during multiple simultaneous calls to timer_sleep() only one
+thread is modifying the sleep_list at a given time.
+
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
+
+To avoid the possibility of a race condition wherein timer interrupt handler
+attempts to modify the sleep_list at the same time as the thread calling the 
+timer_sleep() function, we disable interrupts as soon as timer_sleep() is 
+invoked. As a result, external interrupts like the timer interrupt will not 
+occur whilst timer_sleep() is being run by a thread.
+
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+We considered two main designs for our implementation of the alarm clock. 
+The first design we considered was to have the sleep_list sorted by 
+wakeup_tick such that we would only need to consider the first (or first few) 
+elements in our sleep_list as opposed to iterating through the entire list. 
+
+The first concern we had with this design is that sorting the sleep_list would 
+be time costly, which is especially undesirable when interrupts are disabled. 
+Secondly, this design does allow us to check whether threads need to wake up 
+in constant time, but it still invokes the thread_wakeup function for every 
+tick.
+
+In the end, we felt that reducing the frequency of calling thread_wakeup and 
+reducing the amount of time that our interrupts are disabled 
+(to reduce sluggishness) would be optimal. 
 
              PRIORITY SCHEDULING
              ===================
@@ -60,20 +126,123 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+int base_priority;
+A new member of the struct thread that specifies the priority of the 
+thread prior to any donations.
+
+struct list priority_donors;
+New struct member storing a list of threads that have donated their 
+priority to this thread, which holds a lock they are waiting for. 
+
+struct lock *waiting_for;
+A new member of the struct thread which specifies the lock that the 
+blocked thread is waiting for.
+
+struct list_elem donor_elem;
+A new member of the struct thread which is a list element for the 
+priority_donors list.
+
+int priority;
+A new member of the struct semaphore_elem that stores the priority 
+of the thread which is waiting on the semaphore.
+
 >> B2: Explain the data structure used to track priority donation.
 >> Use ASCII art to diagram a nested donation.  (Alternately, submit a
 >> .png file.)
+
+Priority donation is tracked using the thread’s priority_donors list and the 
+waiting_for member. 
+
+Some thread1’s priority_donors list stores the list of threads that have at 
+some point donated priority to thread1 (where the donated priorities are 
+greater than thread1’s base_priority member). For example, if some thread1 
+donates priority to some thread2, the donor thread (thread2) gets added to 
+thread1’s priority_donors list. The priority_donors list maintains a high to 
+low priority ordering and provides information about which threads with higher 
+priority than thread1 are still waiting on a lock held by thread1.
+The waiting_for member is used to determine the lock 
+(as well as the holder lock->holder) that a thread is waiting for. 
+For example, if a thread acquires a lockA but gets blocked, its waiting_for 
+member is updated to lockA.
+
+In regards to nested donation, the waiting_for member allows a donating thread 
+to check whether or not the lock holder that is waiting for, is waiting on 
+another lock holder, and so on until some lock holder is not waiting on a 
+lock. This allows for recursive priority donation in which each recursive step 
+updates the priority_donors list iff the donor thread does not already exist 
+in that list.
+
 
 ---- ALGORITHMS ----
 
 >> B3: How do you ensure that the highest priority thread waiting for
 >> a lock, semaphore, or condition variable wakes up first?
 
+Whenever a semaphore adds a new thread to its waiters list, we 
+list_insert_ordered to ensure that the list contains a high to low priority 
+ordering. And, before a semaphore pops a waiting thread from its waiters list, 
+we sort the waiters list to ensure high to low priority ordering 
+(we can’t simply pop the front element because we need to account for any 
+priority donations that may have occurred). Since the lock is implemented 
+as a special case of the semaphore, the changes to the semaphore operations 
+also ensure a lock’s highest priority thread wakes up first.
+
+Since the condition variables’ waiters list stores semaphore_elem objects, 
+we decided to add a priority member to the struct semaphore_elem. By doing 
+so, whenever a thread waits on a condition variable and gets added to its 
+waiters list, the corresponding semaphore_elem that gets created would have 
+a way to reference the thread’s priority, at which point we could use 
+list_ordered_insert to maintain high to low (thread) priority ordering in 
+the condition variable’s waiters list.
+
+
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
 
+Suppose thread1 has priority=10, thread2 has priority=20, and 
+thread3 has priority=30.
+Suppose thread1 holds lockA.
+Suppose thread2 holds lockB. 
+
+Then, when thread2 calls lock_acquire on lockA, it stores lockA in its 
+waiting_for member (which it uses to identify the lock holder, in this case 
+thread1) and calls thread_donate_priority(). In this function, thread2 first 
+compares its priority to the lock holder (thread1) and since thread2 has 
+greater priority than thread1 it updates the priority of thread1. Whenever 
+priority donation occurs, the donor (thread2) will check to see if it already 
+exists in the lock holder’s (thread1) priority_donors list. If not, thread2 
+gets added to thread1’s priority_donors list (maintaining high to low priority 
+ordering). The lock holder’s (thread1) waiting_for member is then checked to 
+determine whether thread_donate_priority must be called to donate to a lock 
+holder thread1 is waiting on.  
+
+For nested donation, suppose thread3 tries to acquire lockB, but gets blocked. 
+In this case, it stores lockB in its waiting_for member and calls 
+thread_donate_priority. Similar to thread2’s donation process, thread3 updates 
+the priority of thread2 and gets added to thread2’s priority_donors, but since 
+thread2 is waiting_for a lock, thread_donate_priority is called on thread2. 
+Within this nested call, thread2 updates the priority of thread1, but does not 
+add itself to thread1’s priority_donors list because it already exists from a 
+previous donation.
+
+
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
+
+Suppose we continue from the sequence of events mentioned in B4.
+
+When thread1 calls lock_release() on lockA, our implementation starts by 
+iterating through the priority_donors list of the lockA holder (thread1) and 
+removes any donors that are waiting_for lockA. Then, each thread in the 
+lockA’s waiters list resets their waiting_for member to NULL. 
+After this, the 
+
+After this, thread1 references its priority_donors list to update its priority 
+to the largest priority amongst the remaining donor threads. In this case, 
+thread1 has no other priority_donors that are waiting on other locks held by 
+thread1, thus thread1 references its base_priority member to reset 
+its priority.
+
 
 ---- SYNCHRONIZATION ----
 
@@ -81,10 +250,39 @@ FirstName LastName <email@domain.example>
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
 
+In the original implementation, the race condition arises because there is 
+no synchronization mechanism to ensure that the priority update and the 
+donation handling are atomic. This can lead to the issues that thread A 
+donates its priority to Thread B, raising Thread B's priority. If Thread B's 
+priority is then changed directly via thread_set_priority(), the priority 
+donation might be overridden incorrectly, leading to improper scheduling. 
+Our implementation ensures that if the thread has donors, the effective 
+priority is calculated as the maximum of the new base priority and the highest
+donated priority. This preserves the priority donation mechanism and prevents 
+it from being incorrectly overridden by a direct priority change. Since this 
+race condition involves the interaction between priority donation and direct 
+priority changes of only the current thread, which is not about mutual 
+exclusion among multiple threads. Using lock doesn't help avoid in this case.
+
 ---- RATIONALE ----
 
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+In regards to the overall design, there weren’t many other designs that we 
+considered that were far from our current implementation which uses some type 
+of waiting_for member and priority_donors list to track priority donation. 
+Likewise, for the implementation of our priority ordering via sorting 
+priorities in the waiters lists of our synchronization primitives. However, 
+in terms of time optimizations in our design, we initially considered using 
+the list_sort function to maintain the high to low priority ordering in many 
+of our lists, but instead opted to implement our own compare functions and 
+maintain sorting of the list via list_insert_ordered. Since our comparison 
+function takes O(1) time and iteration done by the list_insert_ordered method 
+takes O(n) time, we are able to maintain most of our sorted lists without the 
+O(nlogn) time complexity that list_sort demands. This is especially important 
+because there are multiple instances where these sorting operations need to be 
+done with interrupts disabled.
 
 
                SURVEY QUESTIONS
