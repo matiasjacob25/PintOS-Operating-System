@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -29,6 +30,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *f_name;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -38,8 +40,20 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  //extract file name token
+  char *save_ptr;
+  int temp1 = sizeof file_name;
+  int temp2 =  strlen(file_name)+1;
+  
+  // create copy to avoid modifying original file_name
+  // assumes file_name has no leading whitespace
+  f_name = malloc(strlen(file_name) + 1);
+  strlcpy(f_name, file_name, strlen(file_name) + 1);
+  f_name = strtok_r(f_name, " ", &save_ptr);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (f_name, PRI_DEFAULT, start_process, fn_copy);
+  free(f_name);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -88,6 +102,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while (1) {}
   return -1;
 }
 
@@ -195,7 +210,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char *file_name);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -221,8 +236,17 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  // extract file name token from file_name
+  // create copy to avoid modifying original file_name
+  // assumes file_name has no leading whitespace
+  char *save_ptr, *f_name;
+  f_name = malloc(strlen(file_name) + 1);
+  strlcpy(f_name, file_name, strlen(file_name) + 1);
+  f_name = strtok_r(f_name, " ", &save_ptr);
+
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (f_name);
+  free(f_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -302,7 +326,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, file_name))
     goto done;
 
   /* Start address. */
@@ -427,7 +451,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, char *file_name) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -441,6 +465,64 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+  
+  // setup user stack according to calling convention
+  int argc = 0; 
+  char *token, *save_ptr;
+  char *fn_copy = malloc(strlen(file_name)+1);
+  strlcpy(fn_copy, file_name, strlen(file_name)+1);
+  char *argv = calloc(sizeof(char *), argc);
+
+  // count number of arguments and get arg tokens
+  for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
+       token = strtok_r (NULL, " ", &save_ptr))
+  {
+    argc++;
+    argv = realloc(argv, sizeof(char *) * argc);
+    argv[argc-1] = token;
+  }
+
+  // push args in right-to-left order, and update argv with memory addresses.
+  for (int i = argc-1; i >= 0; i--)
+  {
+    *esp -= strlen(argv[i])+1;
+    memcpy(*esp, argv[i], strlen(argv[i])+1);
+    argv[argc-1] = *esp;
+  }
+
+  // word-align the stack pointer
+  char padding = "\0\0\0\0";
+  while ((int)*esp % sizeof(char *) != 0)
+  {
+    *esp -= sizeof(uint8_t);
+    memcpy(*esp, &padding, sizeof(uint8_t));
+  }
+
+  // push null pointer sentinel 
+  *esp -= sizeof(char *);
+  memcpy(*esp, &padding, sizeof(char *));
+
+  // push memory addresses of args
+  for (int i = argc-1; i >= 0; i--)
+  {
+    *esp -= sizeof(char *);
+    memcpy(*esp, &argv[i], sizeof(char *));
+  }
+
+  // push argv, argc, and return address.
+  char **argv_ptr = *esp;
+  *esp -= sizeof(char **);
+  memcpy(*esp, argv_ptr, sizeof(char **));
+
+  *esp -= sizeof(int);
+  memcpy(*esp, &argc, sizeof(int));
+
+  int fake_ret_addr = 0;
+  *esp -= sizeof(int);
+  memcpy(*esp, &fake_ret_addr, sizeof(int));
+
+  free(fn_copy);
+  free(argv);
   return success;
 }
 
