@@ -468,9 +468,8 @@ setup_stack (void **esp, char *file_name)
 
   // setup user stack according to calling convention
   int argc = 0;
-  int file_name_len = 0;
 
-  char *token, *save_ptr;
+  char *token, *save_ptr, *args, *temp;
   char *fn_copy = malloc(strlen(file_name)+1);
   strlcpy(fn_copy, file_name, strlen(file_name)+1);
 
@@ -479,24 +478,22 @@ setup_stack (void **esp, char *file_name)
        token = strtok_r (NULL, " ", &save_ptr))
   {
     if (argc == 0)
-      file_name_len = strlen(file_name);
+      temp = file_name + strlen(file_name);
     argc++;
   }
   // remove file name from arg count
   argc--;
   free(fn_copy);
 
-  char *args = 
-  char *args = malloc(strlen*()=);
-  // remove leading whitespace
-  while (args[0] == ' '){
-    args =++;
-  }
+  // remove leading whitespace from extracted args
+  while (*temp == ' ')
+    temp++;
 
   // push args onto the stack (left-to-right order)
-  fn_copy = malloc(strlen(file_name)+1);
+  args = malloc(strlen(temp)+1);
+  strlcpy(args, temp, strlen(temp)+1);
   int *argv = calloc(sizeof(int *), argc);
-  for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
+  for (token = strtok_r (args, " ", &save_ptr); token != NULL;
        token = strtok_r (NULL, " ", &save_ptr))
   {
     *esp -= strlen(token)+1;
