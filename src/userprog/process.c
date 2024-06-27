@@ -459,88 +459,84 @@ setup_stack (void **esp, char *file_name)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
+      {
         *esp = PHYS_BASE;
+
+        // setup user stack according to calling convention
+        int argc = 0, i;
+        char *token, *save_ptr, *args, *temp;
+        char *fn_copy = malloc(strlen(file_name)+1);
+        strlcpy(fn_copy, file_name, strlen(file_name)+1);
+
+        // count num of args
+        for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
+            token = strtok_r (NULL, " ", &save_ptr))
+        {
+          if (argc == 0)
+            // point to the first arg
+            temp = file_name + strlen(token);
+          argc++;
+        }
+        // remove file name from arg count
+        argc--;
+        free(fn_copy);
+
+        // remove leading whitespace from temp pointer
+        while (*temp == ' ')
+          temp++;
+
+        // push args onto the stack (left-to-right order)
+        args = malloc(strlen(temp)+1);
+        strlcpy(args, temp, strlen(temp)+1);
+        char **argv = calloc(argc, sizeof(char *));
+
+        for (token = strtok_r (args, " ", &save_ptr), i = 0; token != NULL;
+            token = strtok_r (NULL, " ", &save_ptr), i++)
+        {
+          *esp -= strlen(token)+1;
+          memcpy(*esp, token, strlen(token)+1);
+          // store arg_addresses in argv s.t. 
+          // argv[0] == arg1_addr, argv[1] == arg2_addr, ...
+          *(argv + sizeof(char*)*i) = *esp;
+        }
+
+        // word-align the stack pointer
+        uint8_t padding = 0;
+        while ((int)*esp % 4 != 0)
+        {
+          *esp -= sizeof(uint8_t);
+          memcpy(*esp, &padding, sizeof(uint8_t));
+        }
+
+        // push null pointer sentinel
+        int zero = 0; 
+        *esp -= sizeof(int);
+        memcpy(*esp, &zero, sizeof(int));
+
+        // push memory addresses of args (right-to-left order)
+        for (int i = argc-1; i >= 0; i--)
+        {
+          *esp -= sizeof(char *);
+          memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
+        }
+
+        // push argv, argc, and return address.
+        char **argv_ptr = *esp;
+        *esp -= sizeof(char **);
+        memcpy(*esp, argv_ptr, sizeof(char **));
+
+        *esp -= sizeof(int);
+        memcpy(*esp, &argc, sizeof(int));
+
+        *esp -= sizeof(int);
+        memcpy(*esp, &zero, sizeof(int));
+
+        free(args);
+        free(argv);
+    }  
       else
         palloc_free_page (kpage);
     }
-
-  // setup user stack according to calling convention
-  int argc = 0;
-
-  char *token, *save_ptr, *args, *temp;
-  char *fn_copy = malloc(strlen(file_name)+1);
-  strlcpy(fn_copy, file_name, strlen(file_name)+1);
-
-  // count num of args
-  for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
-       token = strtok_r (NULL, " ", &save_ptr))
-  {
-    if (argc == 0)
-      temp = file_name + strlen(file_name);
-    argc++;
-  }
-  // remove file name from arg count
-  argc--;
-  free(fn_copy);
-
-  // remove leading whitespace from extracted args
-  while (*temp == ' ')
-    temp++;
-
-  // push args onto the stack (left-to-right order)
-  args = malloc(strlen(temp)+1);
-  strlcpy(args, temp, strlen(temp)+1);
-  int *argv = calloc(sizeof(int *), argc);
-  for (token = strtok_r (args, " ", &save_ptr); token != NULL;
-       token = strtok_r (NULL, " ", &save_ptr))
-  {
-    *esp -= strlen(token)+1;
-    memcpy(*esp, token, strlen(token)+1);
-    // store memory address of the arguments pushed in the stack.
-    argv[argc-1] = *esp;
-  }
-
-  // // push args in right-to-left order, and update argv with memory addresses.
-  // for (int i = argc-1; i >= 0; i--)
-  // {
-  //   *esp -= strlen(argv[i])+1;
-  //   memcpy(*esp, argv[i], strlen(argv[i])+1);
-  //   argv[argc-1] = *esp;
-  // }
-
-  // word-align the stack pointer
-  uint8_t *padding = 0;
-  while ((int)*esp % 4 != 0)
-  {
-    *esp -= sizeof(uint8_t);
-    memcpy(*esp, &padding, sizeof(uint8_t));
-  }
-
-  // push null pointer sentinel
-  int zero = 0; 
-  *esp -= sizeof(int *);
-  memcpy(*esp, &zero, sizeof(int *));
-
-  // push memory addresses of args (right-to-left order)
-  for (int i = argc-1; i >= 0; i--)
-  {
-    *esp -= sizeof(char *);
-    memcpy(*esp, &argv[i], sizeof(char *));
-  }
-
-  // push argv, argc, and return address.
-  char **argv_ptr = *esp;
-  *esp -= sizeof(char **);
-  memcpy(*esp, argv_ptr, sizeof(char **));
-
-  *esp -= sizeof(int);
-  memcpy(*esp, &argc, sizeof(int));
-
-  *esp -= sizeof(int);
-  memcpy(*esp, &zero, sizeof(int));
-
-  free(fn_copy);
-  free(argv);
   return success;
 }
 
