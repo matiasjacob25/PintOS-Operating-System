@@ -42,8 +42,6 @@ process_execute (const char *file_name)
 
   //extract file name token
   char *save_ptr;
-  int temp1 = sizeof file_name;
-  int temp2 =  strlen(file_name)+1;
   
   // create copy to avoid modifying original file_name
   // assumes file_name has no leading whitespace
