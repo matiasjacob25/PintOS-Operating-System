@@ -6,43 +6,6 @@
 
 static void syscall_handler (struct intr_frame *);
 
-/* Reads a byte at user virtual address UADDR.
-   UADDR must be below PHYS_BASE.
-   Returns the byte value if successful, -1 if a segfault
-   occurred. */
-static int
-get_user (const uint8_t *uaddr)
-{
-  int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:"
-       : "=&a" (result) : "m" (*uaddr));
-  return result;
-}
- 
-/* Writes BYTE to user address UDST.
-   UDST must be below PHYS_BASE.
-   Returns true if successful, false if a segfault occurred. */
-static bool
-put_user (uint8_t *udst, uint8_t byte)
-{
-  int error_code;
-  asm ("movl $1f, %0; movb %b2, %1; 1:"
-       : "=&a" (error_code), "=m" (*udst) : "q" (byte));
-  return error_code != -1;
-}
-
-// Copies size bytes from usrc to dst
-// TODO: implement handling for invalid dst and usrc
-static void
-copy_in (void *dst_, const void *usrc_, size_t size)
-{
-  uint8_t *dst = dst_;
-  const uint8_t *usrc = usrc_;
-
-  for (; size > 0; size--, dst++, usrc++)
-    *dst = get_user (usrc);
-}
-
 void
 syscall_init (void) 
 {
@@ -55,11 +18,11 @@ syscall_handler (struct intr_frame *f UNUSED)
   
   // implement some function to verify invalid esp
   // should be able to generalize to any pointers
-  unsigned syscall_number;
-  int args[3];
+  int *esp = f->esp; 
+  // is_user_addr(esp)
 
   // extract the syscall number
-  copy_in (&syscall_number, f->esp, sizeof syscall_number);
+  unsigned syscall_number = *(esp);
 
   switch (syscall_number)
   {
@@ -67,22 +30,58 @@ syscall_handler (struct intr_frame *f UNUSED)
       shutdown_power_off();
       break;  
     case SYS_EXIT:
+      handle_sys_exit();
+      break; 
     case SYS_EXEC:
+      break; 
     case SYS_WAIT:
+      break; 
     case SYS_CREATE:
+      break; 
     case SYS_REMOVE:
+      break; 
     case SYS_OPEN:
+      break; 
     case SYS_FILESIZE:
+      break; 
     case SYS_READ:
-    case SYS_WRITE:
+      break; 
+    case SYS_WRITE: ; 
+      //syscall, fd, buffer, size 
+      int fd = *(esp+1);
+      int bytes_written = 0;
+      const char *buf_addr = *(esp+2);
+      unsigned size = *(esp+3);
+
+      // print to console via putbuf
+      if (fd == 1)
+      {
+        putbuf(buf_addr, size);
+        bytes_written = size;
+      }
+      else 
+      {
+        // TODO: need to verify that current thread has already open 
+        // the file with descriptor == fd
+        bytes_written = file_write(fd, buf_addr, size);
+      }
+      f->eax = bytes_written;
+      break; 
     case SYS_SEEK:
+      break; 
     case SYS_TELL:
+      break; 
     case SYS_CLOSE:
+      break; 
     default:
-      printf("invalid system call number");
+      printf("invalid system call number\n");
   }
 
+  printf ("system call %u\n", syscall_number);
+}
 
-  printf ("system call!\n");
-  thread_exit ();
+void
+handle_sys_exit (void)
+{
+  thread_exit();
 }
