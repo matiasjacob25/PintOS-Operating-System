@@ -42,16 +42,17 @@ process_execute (const char *file_name)
 
   //extract file name token
   char *save_ptr;
+  f_name = strtok_r(file_name, " ", &save_ptr);
   
-  // create copy to avoid modifying original file_name
-  // assumes file_name has no leading whitespace
-  f_name = malloc(strlen(file_name) + 1);
-  strlcpy(f_name, file_name, strlen(file_name) + 1);
-  f_name = strtok_r(f_name, " ", &save_ptr);
+  // // create copy to avoid modifying original file_name
+  // // assumes file_name has no leading whitespace
+  // f_name = malloc(strlen(file_name) + 1);
+  // strlcpy(f_name, file_name, strlen(file_name) + 1);
+  // f_name = strtok_r(f_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (f_name, PRI_DEFAULT, start_process, fn_copy);
-  free(f_name);
+  // free(f_name);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -464,40 +465,25 @@ setup_stack (void **esp, char *file_name)
 
         // setup user stack according to calling convention
         int argc = 0, i;
-        char *token, *save_ptr, *args, *temp;
+        char *token, *save_ptr;
         char *fn_copy = malloc(strlen(file_name)+1);
         strlcpy(fn_copy, file_name, strlen(file_name)+1);
 
         // count num of args
         for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
             token = strtok_r (NULL, " ", &save_ptr))
-        {
-          if (argc == 0)
-            // point to the first arg
-            temp = file_name + strlen(token);
           argc++;
-        }
-        // remove file name from arg count
-        argc--;
-        free(fn_copy);
-
-        // remove leading whitespace from temp pointer
-        while (*temp == ' ')
-          temp++;
 
         // push args onto the stack (left-to-right order)
-        args = malloc(strlen(temp)+1);
-        strlcpy(args, temp, strlen(temp)+1);
-        char **argv = calloc(argc, sizeof(char *));
-
-        for (token = strtok_r (args, " ", &save_ptr), i = 0; token != NULL;
+        int *argv = calloc(argc, sizeof(int));
+        for (token = strtok_r (file_name, " ", &save_ptr), i = 0; token != NULL;
             token = strtok_r (NULL, " ", &save_ptr), i++)
         {
           *esp -= strlen(token)+1;
           memcpy(*esp, token, strlen(token)+1);
-          // store arg_addresses in argv s.t. 
-          // argv[0] == arg1_addr, argv[1] == arg2_addr, ...
-          *(argv + sizeof(char*)*i) = *esp;
+          // store arg_addresses in argv s.t.
+          // argv[0] == file_name_addr, argv[1] == arg1_addr, and so on...
+          argv[i] = *esp;
         }
 
         // word-align the stack pointer
@@ -517,13 +503,14 @@ setup_stack (void **esp, char *file_name)
         for (int i = argc-1; i >= 0; i--)
         {
           *esp -= sizeof(char *);
-          memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
+          // memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
+          memcpy(*esp, &argv[i], sizeof(char *));
         }
 
         // push argv, argc, and return address.
         char **argv_ptr = *esp;
         *esp -= sizeof(char **);
-        memcpy(*esp, argv_ptr, sizeof(char **));
+        memcpy(*esp, &argv_ptr, sizeof(char **));
 
         *esp -= sizeof(int);
         memcpy(*esp, &argc, sizeof(int));
@@ -531,7 +518,7 @@ setup_stack (void **esp, char *file_name)
         *esp -= sizeof(int);
         memcpy(*esp, &zero, sizeof(int));
 
-        free(args);
+        free(fn_copy);
         free(argv);
     }  
       else
