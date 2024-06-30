@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <threads/synch.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -92,15 +93,45 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-#endif
-
+#endif  
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    /* project2 properties */
+    // tracks number of child processes that have finished loading
+    struct semaphore sem_children_exec;
+    // tracks numbers of child processes that have finished execution
+    struct semaphore sem_children_wait;
+    // pid of child process that is being waited on as a result of wait syscall
+    int waiting_on_child;
+    // exit status of current process on exit syscall
+    int exit_status;
+    // parent process of current process
+    struct thread *parent;
+    // list of child processes
+    struct list children;
+    // whether recent child process' load() call was successful
+    bool is_child_load_successful;
   };
+
+/* A child process.
+
+  processA is a child process of processB iff processB receives processA's pid
+  as a return value from a successful system call to exec.
+*/
+struct child {
+  // process id of child process
+  tid_t pid; 
+  // exit status of child process
+  int exit_status;
+  // list element for children list
+  struct list_elem child_elem;
+  // whether child process is being waited on for the first time
+  bool is_first_wait;
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

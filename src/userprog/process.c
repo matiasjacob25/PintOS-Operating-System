@@ -48,6 +48,13 @@ process_execute (const char *file_name)
   tid = thread_create (f_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+
+  // block current process until child process loads
+  sema_down(&(thread_current()->sem_children_exec));
+
+  if (!thread_current()->is_child_load_successful)
+    return TID_ERROR;
+
   return tid;
 }
 
@@ -66,6 +73,12 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+
+  // unblock parent process (who is waiting on current process to load) 
+  // and add them to ready_list.
+  if (thread_current()->parent)
+    thread_current()->parent->is_child_load_successful = success;
+    sema_up(&(thread_current()->parent->sem_children_exec));
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -94,8 +107,32 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while (1) {}
-  return -1;
+  struct thread *cur = thread_current();
+  struct list_elem *e = NULL;
+  struct child *c = NULL;
+  bool is_child = false;
+
+  // check if pid is a direct child of the current process
+  for (e = list_begin(&cur->children); e != list_end(&cur->children); 
+       e = list_next(e))
+  {
+    c = list_entry(e, struct child, child_elem);
+    if (c->pid == child_tid){
+      is_child = true;
+      break;
+    }
+  }
+  // check that current process is waiting on pid for the first time
+  if (!is_child || !c->is_first_wait)
+    return -1;
+
+  // block current process until child process exits
+  sema_down(&cur->sem_children_wait);
+
+  // return exit status of child process
+  int status = c->exit_status;
+  list_remove(e);
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -106,7 +143,15 @@ process_exit (void)
   uint32_t *pd;
 
   // TODO: add logic to close all files that are currently open by the process'
-  // thread, and release any locks that the thread is holding. 
+  // thread, release any locks that the thread is holding, and free any
+  // children process.
+
+  // unblock parent process (who is waiting on current process to terminate) 
+  // and add them to ready_list.
+  if (cur->parent){
+    sema_up(&cur->parent->sem_children_wait);
+    cur->parent = NULL;
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

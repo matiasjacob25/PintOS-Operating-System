@@ -183,6 +183,14 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
+  /* Add newly created thread as a child to current thread. */
+  struct child* c = malloc(sizeof(*c));
+  c->pid = t->tid;
+  // TODO: not sure about default value for this??
+  c->exit_status = -1;
+  c->is_first_wait = true;
+  list_push_back (&thread_current()->children, &c->child_elem);
+
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -283,7 +291,9 @@ thread_exit (void)
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
+  enum intr_level old_level = intr_disable();
   process_exit ();
+  intr_set_level (old_level);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -463,6 +473,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  sema_init(&t->sem_children_exec, 0);
+  sema_init(&t->sem_children_wait, 0);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
