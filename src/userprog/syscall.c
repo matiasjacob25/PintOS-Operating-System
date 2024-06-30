@@ -15,14 +15,8 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  
-  // implement some function to verify invalid esp
-  // should be able to generalize to any pointers
-  int *esp = f->esp; 
-  // is_user_addr(esp)
-
-  // extract the syscall number
-  unsigned syscall_number = *(esp);
+  int *esp = validate_addr(f->esp);
+  unsigned syscall_number = *esp;
 
   switch (syscall_number)
   {
@@ -30,9 +24,12 @@ syscall_handler (struct intr_frame *f UNUSED)
       shutdown_power_off();
       break;  
     case SYS_EXIT:
-      handle_sys_exit();
+      validate_addr(esp+1);
+      handle_sys_exit(*(esp+1));
       break; 
     case SYS_EXEC:
+      validate_addr(esp+1);
+      f->eax = handle_sys_exec(*(esp+1));
       break; 
     case SYS_WAIT:
       break; 
@@ -47,7 +44,9 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_READ:
       break; 
     case SYS_WRITE: ; 
-      //syscall, fd, buffer, size 
+      validate_addr(esp+1);
+      validate_addr(esp+2);
+      validate_addr(esp+3);
       int fd = *(esp+1);
       int bytes_written = 0;
       const char *buf_addr = *(esp+2);
@@ -61,8 +60,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       }
       else 
       {
-        // TODO: need to verify that current thread has already open 
-        // the file with descriptor == fd
+        // TODO: add logic that verifies that current thread has already opened
+        // the file with descriptor == fd, before writing to it.
         bytes_written = file_write(fd, buf_addr, size);
       }
       f->eax = bytes_written;
@@ -80,8 +79,33 @@ syscall_handler (struct intr_frame *f UNUSED)
   printf ("system call %u\n", syscall_number);
 }
 
-void
-handle_sys_exit (void)
-{
+
+// handler for SYS_EXIT
+void 
+handle_sys_exit(int exit_code){
+  printf ("%s: exit(%d)\n", thread_current()->name, exit_code);
   thread_exit();
+}
+
+// handler for SYS_EXEC
+pid_t
+handle_sys_exec (const char *cmd_line)
+{
+  return process_execute(cmd_line);
+}
+
+// Checks validity of the user-provided address.
+// If p is invalid, the process exits (and frees its resources via sys_exit).
+void *
+validate_addr (void *p){
+  // check if p is a null pointer.
+  // check if p points to user address.
+  // check if p points to unmapped virtual memory.
+  if (p == NULL ||
+      !is_user_vaddr(p) ||
+      !pagedir_get_page(thread_current()->pagedir, p))
+  {
+    handle_sys_exit();
+  }
+  return p;
 }

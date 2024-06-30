@@ -43,16 +43,9 @@ process_execute (const char *file_name)
   //extract file name token
   char *save_ptr;
   f_name = strtok_r(file_name, " ", &save_ptr);
-  
-  // // create copy to avoid modifying original file_name
-  // // assumes file_name has no leading whitespace
-  // f_name = malloc(strlen(file_name) + 1);
-  // strlcpy(f_name, file_name, strlen(file_name) + 1);
-  // f_name = strtok_r(f_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (f_name, PRI_DEFAULT, start_process, fn_copy);
-  // free(f_name);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -111,6 +104,9 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  // TODO: add logic to close all files that are currently open by the process'
+  // thread, and release any locks that the thread is holding. 
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
