@@ -125,8 +125,10 @@ process_wait (tid_t child_tid UNUSED)
   // check that current process is waiting on pid for the first time
   if (!is_child || !c->is_first_wait)
     return -1;
-
+  
   // block current process until child process exits
+  c->is_first_wait = false;
+  // cur->waiting_on_child = c->pid;
   sema_down(&cur->sem_children_wait);
 
   // return exit status of child process
@@ -143,14 +145,22 @@ process_exit (void)
   uint32_t *pd;
 
   // TODO: add logic to close all files that are currently open by the process'
-  // thread, release any locks that the thread is holding, and free any
-  // children process.
+  // thread, release any locks that the thread is holding
 
   // unblock parent process (who is waiting on current process to terminate) 
   // and add them to ready_list.
-  if (cur->parent){
+  // if (cur->parent->waiting_on_child == cur->tid){
+  //   sema_up(&cur->parent->sem_children_wait);
+  //   cur->parent->waiting_on_child = NULL;
+  // }
+  if (cur->parent)
     sema_up(&cur->parent->sem_children_wait);
-    cur->parent = NULL;
+
+  /* Free memory allocated for children */
+  struct child *c = NULL;
+  while(!list_empty(&cur->children)){
+    c = list_entry (list_pop_front(&cur->children), struct child, child_elem);
+    free(c);
   }
 
   /* Destroy the current process's page directory and switch back

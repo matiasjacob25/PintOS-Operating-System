@@ -75,9 +75,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     default:
       NOT_REACHED();
   }
-
   // testing
-  printf ("system call %u\n", syscall_number);
+  // printf ("system call %u\n", syscall_number);
 }
 
 // handler for SYS_EXIT
@@ -107,6 +106,7 @@ handle_sys_exit(int exit_status){
       }
     }
   }
+
   thread_exit();
 }
 

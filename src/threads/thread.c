@@ -183,13 +183,12 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
-  /* Add newly created thread as a child to current thread. */
-  struct child* c = malloc(sizeof(*c));
+  /* Add newly created thread as a child to running thread. */
+  struct child* c = calloc(1, sizeof(struct child));
   c->pid = t->tid;
-  // TODO: not sure about default value for this??
-  c->exit_status = -1;
+  c->exit_status = t->exit_status;
   c->is_first_wait = true;
-  list_push_back (&thread_current()->children, &c->child_elem);
+  list_push_back (&running_thread()->children, &c->child_elem);
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -473,8 +472,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  
   sema_init(&t->sem_children_exec, 0);
   sema_init(&t->sem_children_wait, 0);
+  t->waiting_on_child = -1;
+  t->exit_status = -1;
+  t->parent = running_thread();
+  list_init(&t->children);
+  t->is_child_load_successful = false;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
