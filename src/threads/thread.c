@@ -475,7 +475,7 @@ init_thread (struct thread *t, const char *name, int priority)
   
   sema_init(&t->sem_children_exec, 0);
   sema_init(&t->sem_children_wait, 0);
-  t->waiting_on_child = -1;
+  // t->waiting_on_child = -1;
   t->exit_status = -1;
   t->parent = running_thread();
   list_init(&t->children);

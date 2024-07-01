@@ -29,7 +29,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   {
     case SYS_HALT:
       shutdown_power_off();
-      break;  
+      break;
       
     case SYS_EXIT:
       validate_addr(esp+1);
@@ -59,6 +59,8 @@ syscall_handler (struct intr_frame *f UNUSED)
 
     case SYS_OPEN:
       validate_addr(esp+1);
+      // ensure valid pointer is not pointing to NULL
+      validate_addr(*(esp+1));
       file = filesys_open(*(esp+1));
 
       if (file == NULL)
@@ -66,15 +68,19 @@ syscall_handler (struct intr_frame *f UNUSED)
       else
         // add opened file to thread's fdt
         f->eax = fdt_push(&thread_current()->fdt[0], &file);
-      break; 
+      break;
 
     case SYS_FILESIZE:
       validate_addr(esp+1);
       fd = *(esp+1);
-
-      ASSERT (fd != 0 && fd != 1)
+      ASSERT (fd != 0 && fd != 1);
       fd_idx = fd-2;
-      file_length(&thread_current()->fdt[fd_idx]);
+      file = is_file_open(*(esp+1));
+        
+      if (file != NULL)
+        f->eax = file_length(&thread_current()->fdt[fd_idx]);
+      else
+        NOT_REACHED();
       break; 
 
     case SYS_READ:
@@ -131,8 +137,6 @@ syscall_handler (struct intr_frame *f UNUSED)
     default:
       NOT_REACHED();
   }
-  // testing
-  // printf ("system call %u\n", syscall_number);
 }
 
 // handler for SYS_EXIT
@@ -187,7 +191,7 @@ handle_sys_read(int fd, char *buf_addr, unsigned size) {
   {
     struct file *file = is_file_open(fd);
     if (file != NULL)
-      bytes_read = file_read(fd, buf_addr, size);
+      bytes_read = file_read(file, buf_addr, size);
     else
       bytes_read = -1;
   }
@@ -212,7 +216,7 @@ handle_sys_write(int fd, char *buf_addr, unsigned size) {
   {
     struct file *file = is_file_open(fd);
     if (file != NULL)
-      bytes_written = file_write(fd, buf_addr, size);
+      bytes_written = file_write(file, buf_addr, size);
   }
   return bytes_written;
 }
@@ -240,7 +244,9 @@ validate_addr (void *p){
 int
 fdt_push(struct file *fdt, struct file *f){
   int i = 0;
-  while(*(&fdt + i*sizeof(struct file)) == NULL)
+  // while(*(&fdt + i*sizeof(struct file)) != NULL)
+  //   i++;
+  while(fdt[i].inode != NULL)
     i++;
   
   // there can be max 128 newly opened files
@@ -262,7 +268,7 @@ struct file *
 is_file_open(int fd) {
   int fd_idx = fd-2;
 
-  if (fd < 0 || fd_idx > 128 || &thread_current()->fdt[fd_idx] != NULL)
+  if (fd < 0 || fd_idx > 128 || thread_current()->fdt[fd_idx].inode == NULL)
     return NULL;
   return &thread_current()->fdt[fd_idx];
 }
