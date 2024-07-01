@@ -4,7 +4,14 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include <threads/synch.h>
+#include "threads/synch.h"
+
+// testing
+struct file {
+  struct inode *inode;
+  int32_t pos;
+  bool deny_write;
+};
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -115,6 +122,9 @@ struct thread
     struct list children;
     // whether recent child process' load() call was successful
     bool is_child_load_successful;
+
+    // file descriptor table
+    struct file fdt[128];
   };
 
 /* A child process.

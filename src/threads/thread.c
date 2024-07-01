@@ -480,6 +480,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->parent = running_thread();
   list_init(&t->children);
   t->is_child_load_successful = false;
+  memset(&t->fdt[0], 0, sizeof(t->fdt));
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

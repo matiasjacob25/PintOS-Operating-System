@@ -144,8 +144,21 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  // TODO: add logic to close all files that are currently open by the process'
-  // thread, release any locks that the thread is holding
+  // TODO: add logic to release any locks that the thread is holding
+
+  // close all files in the file descriptor table
+  // int i = 0;
+  // while(&cur->fdt[i] != NULL){
+  //   file_close(&cur->fdt[i]);
+  //   i++;
+  // }
+
+  /* Free memory allocated for children */
+  struct child *c = NULL;
+  while(!list_empty(&cur->children)){
+    c = list_entry (list_pop_front(&cur->children), struct child, child_elem);
+    free(c);
+  }
 
   // unblock parent process (who is waiting on current process to terminate) 
   // and add them to ready_list.
@@ -155,13 +168,6 @@ process_exit (void)
   // }
   if (cur->parent)
     sema_up(&cur->parent->sem_children_wait);
-
-  /* Free memory allocated for children */
-  struct child *c = NULL;
-  while(!list_empty(&cur->children)){
-    c = list_entry (list_pop_front(&cur->children), struct child, child_elem);
-    free(c);
-  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
