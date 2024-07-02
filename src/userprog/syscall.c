@@ -43,7 +43,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 
     case SYS_WAIT:
       validate_addr(esp+1);
-      process_wait(*(esp+1));
+      f->eax = process_wait(*(esp+1));
       break; 
 
     case SYS_CREATE:
