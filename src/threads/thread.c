@@ -163,7 +163,7 @@ thread_print_stats (void)
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
-thread_create (const char *name, int priority,
+ thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
   struct thread *t;
@@ -480,7 +480,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->parent = running_thread();
   list_init(&t->children);
   t->is_child_load_successful = false;
-  memset(&t->fdt[0], 0, sizeof(t->fdt));
+  list_init(&t->fdt);
+  t->next_fd = 2;
+  t->exec_file = NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

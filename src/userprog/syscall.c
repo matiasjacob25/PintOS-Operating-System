@@ -13,6 +13,7 @@ static void syscall_handler (struct intr_frame *);
 void
 syscall_init (void) 
 {
+  lock_init(&filesys_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -23,7 +24,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   unsigned syscall_number = *esp;
   struct file *file = NULL;
   int fd;
-  int fd_idx;
 
   switch (syscall_number)
   {
@@ -49,89 +49,153 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_CREATE:
       validate_addr(esp+1);
       validate_addr(esp+2);
+      // ensure value that file pointer points to is a valid address
+      validate_addr(*(esp+1));
+
+      lock_acquire(&filesys_lock);
       f->eax = filesys_create(*(esp+1), *(esp+2));
+      lock_release(&filesys_lock);
       break;
 
     case SYS_REMOVE:
       validate_addr(esp+1);
+      // ensure value that file pointer points to is a valid address
+      validate_addr(*(esp+1));
+
+      lock_acquire(&filesys_lock);
       f->eax = filesys_remove(*(esp+1));
+      lock_release(&filesys_lock);
       break; 
 
     case SYS_OPEN:
       validate_addr(esp+1);
-      // ensure valid pointer is not pointing to NULL
+      // ensure value that file pointer points to is a valid address
       validate_addr(*(esp+1));
+
+      lock_acquire(&filesys_lock);
       file = filesys_open(*(esp+1));
 
       if (file == NULL)
         f->eax = -1;
       else
         // add opened file to thread's fdt
-        f->eax = fdt_push(&thread_current()->fdt[0], &file);
+        f->eax = fdt_push(file);
+      lock_release(&filesys_lock);
       break;
 
     case SYS_FILESIZE:
       validate_addr(esp+1);
       fd = *(esp+1);
       ASSERT (fd != 0 && fd != 1);
-      fd_idx = fd-2;
-      file = is_file_open(*(esp+1));
+
+      lock_acquire(&filesys_lock);
+      file = get_open_file(*(esp+1));
         
       if (file != NULL)
-        f->eax = file_length(&thread_current()->fdt[fd_idx]);
+      {
+        f->eax = file_length(file);
+        lock_release(&filesys_lock);
+      }
       else
-        NOT_REACHED();
+      {
+        lock_release(&filesys_lock);
+        handle_sys_exit(-1);
+      }
       break; 
 
     case SYS_READ:
       validate_addr(esp+1);
       validate_addr(esp+2);
       validate_addr(esp+3);
+      // ensure value that buffer pointer points to is a valid address
+      validate_addr(*(esp+2));
+
+      lock_acquire(&filesys_lock);
       f->eax = handle_sys_read(*(esp+1), *(esp+2), *(esp+3));
+      lock_release(&filesys_lock);
       break; 
 
     case SYS_WRITE: ; 
       validate_addr(esp+1);
       validate_addr(esp+2);
       validate_addr(esp+3);
+      // ensure value that buffer pointer points to is a valid address
+      validate_addr(*(esp+2));
+
+      lock_acquire(&filesys_lock);
       f->eax = handle_sys_write(*(esp+1), *(esp+2), *(esp+3));
+      lock_release(&filesys_lock);
       break; 
 
     case SYS_SEEK:
       validate_addr(esp+1);
       validate_addr(esp+2);
-      file = is_file_open(*(esp+1));
+
+      lock_acquire(&filesys_lock);
+      file = get_open_file(*(esp+1));
 
       if (file != NULL)
+      {
         file_seek(file, *(esp+2));
+        lock_release(&filesys_lock);
+      }
       else
-        NOT_REACHED();
+      {
+        lock_release(&filesys_lock);
+        handle_sys_exit(-1);
+      }
       break; 
 
     case SYS_TELL:
       validate_addr(esp+1);
-      file = is_file_open(*(esp+1));
+
+      lock_acquire(&filesys_lock);
+      file = get_open_file(*(esp+1));
       
       if (file != NULL)
+      {
         f->eax = file_tell(file);
+        lock_release(&filesys_lock);
+      }
       else
-        NOT_REACHED();
+      {
+        lock_release(&filesys_lock);
+        handle_sys_exit(-1);
+      }
       break; 
 
     case SYS_CLOSE:
       validate_addr(esp+1);
       fd = *(esp+1);
-      fd_idx = fd-2;
-      file = is_file_open(fd);
+
+      lock_acquire(&filesys_lock);
+      file = get_open_file(fd);
 
       if (file != NULL)
       {
-        file_close(file);
-        // remove opened file from thread's fdt
-        memset(&thread_current()->fdt[fd_idx], 0, sizeof(struct file));
+        struct thread_file *tf = NULL;
+        struct list_elem *e = list_begin(&thread_current()->fdt);
+
+        // if it exists, remove opened file from thread's fdt
+        while (e != list_end(&thread_current()->fdt)){
+          tf = list_entry(e, struct thread_file, file_elem);
+          
+          if (tf->fd == fd)
+          {
+            file_close(file);
+            list_remove(&tf->file_elem);
+            free(tf);
+            break;
+          }
+          e = list_next(e);
+        } 
+        lock_release(&filesys_lock);
       }
       else
-        NOT_REACHED();
+      {
+        lock_release(&filesys_lock);
+        handle_sys_exit(-1);
+      }
       break; 
 
     default:
@@ -173,8 +237,6 @@ handle_sys_exit(int exit_status){
 //handler for SYS_READ
 int
 handle_sys_read(int fd, char *buf_addr, unsigned size) {
-  // assume that you cannot read from STDOUT
-  ASSERT(fd != 1);
   int bytes_read = 0, i;
 
   // read from STDIN(keyboard) using input_getc()
@@ -189,7 +251,7 @@ handle_sys_read(int fd, char *buf_addr, unsigned size) {
   }
   else
   {
-    struct file *file = is_file_open(fd);
+    struct file *file = get_open_file(fd);
     if (file != NULL)
       bytes_read = file_read(file, buf_addr, size);
     else
@@ -202,8 +264,6 @@ handle_sys_read(int fd, char *buf_addr, unsigned size) {
 //handler for SYS_WRITE
 int
 handle_sys_write(int fd, char *buf_addr, unsigned size) {
-  // assume that you cannot write to STDIN
-  ASSERT(fd != 0);
   int bytes_written = 0;
 
   // print to STDOUT(console) via single call to putbuf()
@@ -214,9 +274,11 @@ handle_sys_write(int fd, char *buf_addr, unsigned size) {
   }
   else 
   {
-    struct file *file = is_file_open(fd);
+    struct file *file = get_open_file(fd);
     if (file != NULL)
       bytes_written = file_write(file, buf_addr, size);
+    else
+      bytes_written = -1;
   }
   return bytes_written;
 }
@@ -238,37 +300,45 @@ validate_addr (void *p){
   return p;
 }
 
-// Adds opened file f to first available entry in the 
-// file descriptor table fdt.
+// Creates and pushes a thread_file object to the end of the
+// running thread's file descriptor table fdt. 
 // Returns the file descriptor assigned to the file.
 int
-fdt_push(struct file *fdt, struct file *f){
-  int i = 0;
-  // while(*(&fdt + i*sizeof(struct file)) != NULL)
-  //   i++;
-  while(fdt[i].inode != NULL)
-    i++;
-  
+fdt_push(struct file *f){
+  // ASSERT(f != NULL || f->inode != NULL);
+  struct thread *cur = thread_current();
+
   // there can be max 128 newly opened files
   // (in addition to reserved fd 0 and fd 1).
-  if (i > 128)
-    NOT_REACHED();  
-  
-  // *(&fdt + i*sizeof(struct file)) = f;
-  memcpy(&fdt[i], &f, sizeof(struct file));
+  if (list_size(&cur->fdt) > 128)
+    NOT_REACHED(); 
 
-  // account for reserved fd 0 and fd 1
-  return i+2;
+  // create and initialize new thread_file object
+  struct thread_file *tf = malloc(sizeof(struct thread_file));
+  tf->file_addr = f; 
+  tf->fd = cur->next_fd;
+  cur->next_fd++;
+  list_push_back(&cur->fdt, &tf->file_elem);
+   
+  return tf->fd;
 }
 
 // Returns pointer to file iff the file with descriptor fd exists in the 
 // running thread's file descriptor table.
 // Otherwise, returns NULL pointer.
 struct file *
-is_file_open(int fd) {
-  int fd_idx = fd-2;
-
-  if (fd < 0 || fd_idx > 128 || thread_current()->fdt[fd_idx].inode == NULL)
-    return NULL;
-  return &thread_current()->fdt[fd_idx];
+get_open_file(int fd) {
+  struct thread_file *tf = NULL;
+  struct list_elem *e = list_begin(&thread_current()->fdt);
+  
+  // iterate through elements in the thread's fdt until the file 
+  // descriptor is found
+  while (e != list_end(&thread_current()->fdt)){
+    tf = list_entry(e, struct thread_file, file_elem);
+    
+    if (tf->fd == fd)
+      return tf->file_addr;
+    e = list_next(e);
+  }
+  return NULL;
 }

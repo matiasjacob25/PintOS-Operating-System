@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -31,6 +32,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   char *f_name;
+  char *save_ptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -41,8 +43,9 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   //extract file name token
-  char *save_ptr;
-  f_name = strtok_r(file_name, " ", &save_ptr);
+  f_name = malloc(strlen(file_name)+1);
+  strlcpy (f_name, file_name, strlen(file_name)+1);
+  f_name = strtok_r (f_name," ",&save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (f_name, PRI_DEFAULT, start_process, fn_copy);
@@ -144,19 +147,25 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  // TODO: add logic to release any locks that the thread is holding
+  // allow writing to executable file
+  // TODO: NOT PASSING THE ASSERT within the file_allow_write func ....
+  // file_allow_write(cur->exec_file);
 
-  // close all files in the file descriptor table
-  // int i = 0;
-  // while(&cur->fdt[i] != NULL){
-  //   file_close(&cur->fdt[i]);
-  //   i++;
-  // }
+  // close all files in the file descriptor table, and free memory allocated 
+  // for each thread_file.
+  struct thread_file *tf = NULL;
+  while(!list_empty(&cur->fdt)){
+    tf = list_entry (list_pop_front(&cur->fdt), struct thread_file, file_elem);
+    file_close(tf->file_addr);
+    list_remove(&tf->file_elem);
+    free(tf);
+  }
 
   /* Free memory allocated for children */
   struct child *c = NULL;
   while(!list_empty(&cur->children)){
     c = list_entry (list_pop_front(&cur->children), struct child, child_elem);
+    list_remove(&c->child_elem);
     free(c);
   }
 
@@ -387,8 +396,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
-
+  
   success = true;
+  
+  // prevent writing to executable file while it's running.
+  file_deny_write(file);
+  thread_current()->exec_file = file;
 
  done:
   /* We arrive here whether the load is successful or not. */
