@@ -148,8 +148,7 @@ process_exit (void)
   uint32_t *pd;
 
   // allow writing to executable file
-  // TODO: NOT PASSING THE ASSERT within the file_allow_write func ....
-  // file_allow_write(cur->exec_file);
+  file_allow_write(cur->exec_file);
 
   // close all files in the file descriptor table, and free memory allocated 
   // for each thread_file.
@@ -394,15 +393,18 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *eip = (void (*) (void)) ehdr.e_entry;
   
   success = true;
-  
-  // prevent writing to executable file while it's running.
-  file_deny_write(file);
-  thread_current()->exec_file = file;
 
- done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
-  return success;
+  done:
+    if (success){
+      // prevent writing to executable file which 
+      // just successfully loaded to run.
+      file_deny_write(file);
+      thread_current()->exec_file = file;
+    }
+    else 
+      file_close (file);
+    return success;
 }
 
 /* load() helpers. */

@@ -277,10 +277,11 @@ handle_sys_write(int fd, char *buf_addr, unsigned size) {
   else 
   {
     struct file *file = get_open_file(fd);
-    if (file != NULL)
+    // only write to file if it is not being executed elsewhere.
+    if (file != NULL && file->deny_write == false)
       bytes_written = file_write(file, buf_addr, size);
     else
-      bytes_written = -1;
+      bytes_written = 0;
   }
   return bytes_written;
 }
