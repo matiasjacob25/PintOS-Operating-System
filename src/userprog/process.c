@@ -148,7 +148,8 @@ process_exit (void)
   uint32_t *pd;
 
   // allow writing to executable file
-  file_allow_write(cur->exec_file);
+  if (cur->exec_file != NULL)
+    file_allow_write(cur->exec_file);
 
   // close all files in the file descriptor table, and free memory allocated 
   // for each thread_file.
