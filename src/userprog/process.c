@@ -528,6 +528,7 @@ setup_stack (void **esp, char *file_name)
 {
   uint8_t *kpage;
   bool success = false;
+  int memory_used = 0;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
@@ -546,7 +547,16 @@ setup_stack (void **esp, char *file_name)
           // count num of args
           for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
               token = strtok_r (NULL, " ", &save_ptr))
-            argc++;
+            {
+              argc++;
+              memory_used = memory_used + strlen(token);
+            }
+
+          if (memory_used > 4096)
+            {
+              palloc_free_page(kpage);
+              return false;
+            }
 
           // push args onto the stack (left-to-right order)
           int *argv = calloc(argc, sizeof(int));
