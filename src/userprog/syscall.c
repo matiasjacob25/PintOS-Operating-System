@@ -38,12 +38,14 @@ syscall_handler (struct intr_frame *f UNUSED)
 
     case SYS_EXEC:
       validate_addr(esp+1);
+      // ensure value that file pointer points to is a valid address
+      validate_addr(*(esp+1));
       f->eax = process_execute(*(esp+1));
       break;
 
     case SYS_WAIT:
       validate_addr(esp+1);
-      process_wait(*(esp+1));
+      f->eax = process_wait(*(esp+1));
       break; 
 
     case SYS_CREATE:

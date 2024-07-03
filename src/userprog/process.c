@@ -171,10 +171,6 @@ process_exit (void)
 
   // unblock parent process (who is waiting on current process to terminate) 
   // and add them to ready_list.
-  // if (cur->parent->waiting_on_child == cur->tid){
-  //   sema_up(&cur->parent->sem_children_wait);
-  //   cur->parent->waiting_on_child = NULL;
-  // }
   if (cur->parent)
     sema_up(&cur->parent->sem_children_wait);
 

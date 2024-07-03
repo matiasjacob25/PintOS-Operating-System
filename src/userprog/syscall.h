@@ -1,6 +1,8 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 
+#include <list.h>
+
 /* Struct that is to be inserted into a thread's 
 file descriptor table (fdt). */
 struct thread_file
