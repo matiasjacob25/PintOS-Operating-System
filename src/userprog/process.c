@@ -118,13 +118,14 @@ process_wait (tid_t child_tid UNUSED)
   // check if pid is a direct child of the current process
   for (e = list_begin(&cur->children); e != list_end(&cur->children); 
        e = list_next(e))
-  {
-    c = list_entry(e, struct child, child_elem);
-    if (c->pid == child_tid){
-      is_child = true;
-      break;
-    }
-  }
+    {
+      c = list_entry(e, struct child, child_elem);
+      if (c->pid == child_tid)
+        {
+          is_child = true;
+          break;
+        }
+    } 
   // check that current process is waiting on pid for the first time
   if (!is_child || !c->is_first_wait)
     return -1;
@@ -153,20 +154,24 @@ process_exit (void)
   // close all files in the file descriptor table, and free memory allocated 
   // for each thread_file.
   struct thread_file *tf = NULL;
-  while(!list_empty(&cur->fdt)){
-    tf = list_entry (list_pop_front(&cur->fdt), struct thread_file, file_elem);
-    file_close(tf->file_addr);
-    list_remove(&tf->file_elem);
-    free(tf);
-  }
+  while(!list_empty(&cur->fdt))
+    {
+      tf = list_entry (list_pop_front(&cur->fdt), 
+                       struct thread_file, file_elem);
+      file_close(tf->file_addr);
+      list_remove(&tf->file_elem);
+      free(tf);
+    }
 
   /* Free memory allocated for children */
   struct child *c = NULL;
-  while(!list_empty(&cur->children)){
-    c = list_entry (list_pop_front(&cur->children), struct child, child_elem);
-    list_remove(&c->child_elem);
-    free(c);
-  }
+  while(!list_empty(&cur->children))
+    {
+      c = list_entry (list_pop_front(&cur->children),
+                      struct child, child_elem);
+      list_remove(&c->child_elem);
+      free(c);
+    }
 
   // unblock parent process (who is waiting on current process to terminate) 
   // and add them to ready_list.
@@ -396,12 +401,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* We arrive here whether the load is successful or not. */
   done:
-    if (success){
-      // prevent writing to executable file which 
-      // just successfully loaded and will soon run.
-      file_deny_write(file);
-      thread_current()->exec_file = file;
-    }
+    if (success)
+      {
+        // prevent writing to executable file which 
+        // just successfully loaded and will soon run.
+        file_deny_write(file);
+        thread_current()->exec_file = file;
+      }
     else 
       file_close (file);
     return success;
@@ -528,67 +534,67 @@ setup_stack (void **esp, char *file_name)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-      {
-        *esp = PHYS_BASE;
-
-        // setup user stack according to calling convention
-        int argc = 0, i;
-        char *token, *save_ptr;
-        char *fn_copy = malloc(strlen(file_name)+1);
-        strlcpy(fn_copy, file_name, strlen(file_name)+1);
-
-        // count num of args
-        for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
-            token = strtok_r (NULL, " ", &save_ptr))
-          argc++;
-
-        // push args onto the stack (left-to-right order)
-        int *argv = calloc(argc, sizeof(int));
-        for (token = strtok_r (file_name, " ", &save_ptr), i = 0; token != NULL;
-            token = strtok_r (NULL, " ", &save_ptr), i++)
         {
-          *esp -= strlen(token)+1;
-          memcpy(*esp, token, strlen(token)+1);
-          // store arg_addresses in argv s.t.
-          // argv[0] == file_name_addr, argv[1] == arg1_addr, and so on...
-          argv[i] = *esp;
-        }
+          *esp = PHYS_BASE;
 
-        // word-align the stack pointer
-        uint8_t padding = 0;
-        while ((int)*esp % 4 != 0)
-        {
-          *esp -= sizeof(uint8_t);
-          memcpy(*esp, &padding, sizeof(uint8_t));
-        }
+          // setup user stack according to calling convention
+          int argc = 0, i;
+          char *token, *save_ptr;
+          char *fn_copy = malloc(strlen(file_name)+1);
+          strlcpy(fn_copy, file_name, strlen(file_name)+1);
 
-        // push null pointer sentinel
-        int zero = 0; 
-        *esp -= sizeof(int);
-        memcpy(*esp, &zero, sizeof(int));
+          // count num of args
+          for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
+              token = strtok_r (NULL, " ", &save_ptr))
+            argc++;
 
-        // push memory addresses of args (right-to-left order)
-        for (int i = argc-1; i >= 0; i--)
-        {
-          *esp -= sizeof(char *);
-          // memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
-          memcpy(*esp, &argv[i], sizeof(char *));
-        }
+          // push args onto the stack (left-to-right order)
+          int *argv = calloc(argc, sizeof(int));
+          for (token = strtok_r (file_name, " ", &save_ptr), i = 0;
+               token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++)
+            {
+              *esp -= strlen(token)+1;
+              memcpy(*esp, token, strlen(token)+1);
+              // store arg_addresses in argv s.t.
+              // argv[0] == file_name_addr, argv[1] == arg1_addr, and so on...
+              argv[i] = *esp;
+            }
 
-        // push argv, argc, and return address.
-        char **argv_ptr = *esp;
-        *esp -= sizeof(char **);
-        memcpy(*esp, &argv_ptr, sizeof(char **));
+          // word-align the stack pointer
+          uint8_t padding = 0;
+          while ((int)*esp % 4 != 0)
+            {
+              *esp -= sizeof(uint8_t);
+              memcpy(*esp, &padding, sizeof(uint8_t));
+            }
 
-        *esp -= sizeof(int);
-        memcpy(*esp, &argc, sizeof(int));
+          // push null pointer sentinel
+          int zero = 0; 
+          *esp -= sizeof(int);
+          memcpy(*esp, &zero, sizeof(int));
 
-        *esp -= sizeof(int);
-        memcpy(*esp, &zero, sizeof(int));
+          // push memory addresses of args (right-to-left order)
+          for (int i = argc-1; i >= 0; i--)
+            {
+              *esp -= sizeof(char *);
+              // memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
+              memcpy(*esp, &argv[i], sizeof(char *));
+            }
 
-        free(fn_copy);
-        free(argv);
-    }  
+          // push argv, argc, and return address.
+          char **argv_ptr = *esp;
+          *esp -= sizeof(char **);
+          memcpy(*esp, &argv_ptr, sizeof(char **));
+
+          *esp -= sizeof(int);
+          memcpy(*esp, &argc, sizeof(int));
+
+          *esp -= sizeof(int);
+          memcpy(*esp, &zero, sizeof(int));
+
+          free(fn_copy);
+          free(argv);
+        }  
       else
         palloc_free_page (kpage);
     }
