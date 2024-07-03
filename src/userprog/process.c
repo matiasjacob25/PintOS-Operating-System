@@ -131,7 +131,6 @@ process_wait (tid_t child_tid UNUSED)
   
   // block current process until child process exits
   c->is_first_wait = false;
-  // cur->waiting_on_child = c->pid;
   sema_down(&cur->sem_children_wait);
 
   // return exit status of child process
@@ -399,7 +398,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   done:
     if (success){
       // prevent writing to executable file which 
-      // just successfully loaded to run.
+      // just successfully loaded and will soon run.
       file_deny_write(file);
       thread_current()->exec_file = file;
     }

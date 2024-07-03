@@ -308,7 +308,6 @@ validate_addr (void *p){
 // Returns the file descriptor assigned to the file.
 int
 fdt_push(struct file *f){
-  // ASSERT(f != NULL || f->inode != NULL);
   struct thread *cur = thread_current();
 
   // there can be max 128 newly opened files

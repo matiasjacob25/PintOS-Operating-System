@@ -105,10 +105,6 @@ struct thread
     struct semaphore sem_children_exec;
     // tracks numbers of child processes that have finished execution
     struct semaphore sem_children_wait;
-
-    // pid of child process that is being waited on as a result of wait syscall
-    // int waiting_on_child;
-
     // exit status of current process on exit syscall
     int exit_status;
     // parent process of current process
@@ -119,7 +115,6 @@ struct thread
     bool is_child_load_successful;
 
     // file descriptor table
-    // struct file fdt[128];
     struct list fdt; 
     // next available file descriptor 
     int next_fd;
