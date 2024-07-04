@@ -214,6 +214,12 @@ handle_sys_write(fd, buf, size):
           writes size bytes to the file and returns the number of bytes written
         - Otherwise, returns 0.
 
+On return, f->eax is set to return value of handle_sys_read, and the file 
+system lock is released.
+
+Note that to prevent writing to executables, file_deny_write is called when a 
+new executable is loaded, and file_allow_write is called when the executable 
+exits.
 
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
