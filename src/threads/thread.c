@@ -163,7 +163,7 @@ thread_print_stats (void)
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
-thread_create (const char *name, int priority,
+ thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
   struct thread *t;
@@ -182,6 +182,13 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+  /* Add newly created thread as a child to running thread. */
+  struct child* c = calloc(1, sizeof(struct child));
+  c->pid = t->tid;
+  c->exit_status = t->exit_status;
+  c->is_first_wait = true;
+  list_push_back (&running_thread()->children, &c->child_elem);
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -283,7 +290,9 @@ thread_exit (void)
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
+  enum intr_level old_level = intr_disable();
   process_exit ();
+  intr_set_level (old_level);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
@@ -463,6 +472,17 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  
+  sema_init(&t->sem_children_exec, 0);
+  sema_init(&t->sem_children_wait, 0);
+  // t->waiting_on_child = -1;
+  t->exit_status = -1;
+  t->parent = running_thread();
+  list_init(&t->children);
+  t->is_child_load_successful = false;
+  list_init(&t->fdt);
+  t->next_fd = 2;
+  t->exec_file = NULL;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
