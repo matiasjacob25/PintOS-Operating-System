@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
+#include "hash.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -120,6 +121,10 @@ struct thread
     int next_fd;
     // file being executed by this process
     struct file *exec_file;
+
+    /* project3 properties */
+    // supplementary page table
+    struct hash sup_page_table;
   };
 
 /* A child process.

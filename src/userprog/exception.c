@@ -157,6 +157,22 @@ page_fault (struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
+
+  // TODO: validate the fault address and determine the type of data that is being
+  // accessed (memory-mapped file, stack, or executable valid.)
+
+  // check that fault_addr comes from user address space
+  if (fault_addr != NULL && is_user_vaddr(fault_addr)) 
+  {
+  
+    // retrieve supplemental page table entry that corresponds to fault_addr
+    struct sup_page_entry *spe = get_sup_page_entry(fault_addr);
+    if (spe)
+    {
+      
+    } 
+  }
+
   kill (f);
 }
 
