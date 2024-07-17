@@ -502,18 +502,27 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       // create supplementary page table entry for this page
       struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
+      if (spe != NULL)
+      {
+        spe->addr = pg_round_down(upage);
+        spe->type = EXECUTABLE;
+        spe->file = file;
+        spe->offset = ofs;
+        spe->read_bytes = page_read_bytes;
+        spe->zero_bytes = page_zero_bytes;
+        spe->is_writable = writable;
+        // TODO: fix initializations for the fields below
+        // once you get better idea of how they're being used. 
+        spe->swap_idx = -1;
+        spe->is_in_memory = false;
+      }
+      else
+        return false;
 
-      page_entry_init(
-        spe, 
-        upage,
-        EXECUTABLE,
-        read_bytes,
-        zero_bytes,
-        file,
-        ofs,
-        -1,
-        false 
-      );
+      // update thread's hash_table
+      if (hash_insert(&thread_current()->sup_page_table, 
+        &spe->sup_hash_elem) != NULL)
+        return false;
 
       // /* Get a page of memory. */
       // uint8_t *kpage = palloc_get_page (PAL_USER);

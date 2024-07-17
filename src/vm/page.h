@@ -2,6 +2,10 @@
 #include <inttypes.h>
 #include <off_t.h>
 #include <stdbool.h>
+#include <hash.h>
+
+/* handle synchronization during operations on supplementary page table. */
+struct lock sup_page_table_lock;
 
 /* type of data that is represented by a page_entry*/
 enum page_type {
@@ -10,46 +14,45 @@ enum page_type {
   EXECUTABLE
 };
 
-/* supplementary page table entry */
+/* provides additional information about a page of memory */
 struct sup_page_entry {
-  // uint32_t *page_id;
-  // bool read_write_perms
-
-  /* user space address (should be some fault_addr) */
-  void *uaddr;
-
-  /* type of data that the page table entry corresponds to */
+  /* virtual address of start of the page*/
+  void *addr;
+  /* type of data that the page corresponds to */
   enum page_type type;
+  /* if true, the page can be modified. Otherwise, read-only. */
+  bool is_writable;
 
+  /* file that the page reads from */
+  struct file *file;
+  /* offset that the page reads from in the file */
+  off_t offset; 
   /* number of bytes that should be read from file and stored in the page */
   uint32_t read_bytes;
   /* number of bytes that should be zeroed out in the page */
   uint32_t zero_bytes;
 
-  /* memory-mapped files */
-  /* file that the page entry maps to */
-  struct file *file;
-  /* offset in the file */
-  off_t offset; 
-
   /* index of page in swap table */
   int swap_idx; 
-
   /* whether or not page exists in physical memory */
   bool is_in_memory;
+  /* hash_elem */
+  struct hash_elem sup_hash_elem;
 };
 
-void page_entry_init(
-  struct sup_page_entry *spe, 
-  void* uaddr, 
-  enum page_type type, 
-  uint32_t read_bytes, 
-  uint32_t zero_bytes, 
-  struct file *file, 
-  off_t offset, 
-  int swap_idx, 
-  bool is_in_memory
-);
+// void sup_page_entry_init(
+//   struct sup_page_entry *spe, 
+//   void* uaddr, 
+//   enum page_type type, 
+//   uint32_t read_bytes, 
+//   uint32_t zero_bytes, 
+//   struct file *file, 
+//   off_t offset, 
+//   int swap_idx, 
+//   bool is_in_memory
+// );
+
+void sup_page_table_init (void);
 
 
 /*
