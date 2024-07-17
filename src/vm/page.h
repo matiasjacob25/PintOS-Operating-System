@@ -35,7 +35,7 @@ struct sup_page_entry {
   /* index of page in swap table */
   int swap_idx; 
   /* whether or not page exists in physical memory */
-  bool is_in_memory;
+  bool is_in_swap;
   /* hash_elem */
   struct hash_elem sup_hash_elem;
 };
@@ -52,7 +52,9 @@ struct sup_page_entry {
 //   bool is_in_memory
 // );
 
-void sup_page_table_init (void);
+void sup_page_table_init (struct hash *sup_page_table);
+
+struct sup_page_entry* get_sup_page_entry(void *addr);
 
 
 /*

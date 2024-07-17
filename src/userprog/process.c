@@ -562,6 +562,9 @@ setup_stack (void **esp, char *file_name)
   bool success = false;
   int memory_used = 0;
 
+  // TODO: update setup stack s.t. it no longer allocates a page of memory 
+  // and maps the page. Instead, should be handled by page_fault_handler accordingly. 
+  
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
@@ -584,6 +587,7 @@ setup_stack (void **esp, char *file_name)
               memory_used = memory_used + strlen(token);
             }
 
+          //TODO: consider whether or not this limit on memory can be removed?
           if (memory_used > 4096)
             {
               palloc_free_page(kpage);

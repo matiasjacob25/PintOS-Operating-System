@@ -5,6 +5,11 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "vm/page.h"
+#include "threads/vaddr.h"
+
+/* Define max size limit for user stack to be 8MB */
+#define MAX_STACK_SIZE (1024 * 1024 * 8)
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -168,8 +173,25 @@ page_fault (struct intr_frame *f)
     struct sup_page_entry *spe = get_sup_page_entry(fault_addr);
     if (spe != NULL)
     {
-      
-    } 
+      switch(spe->type) {
+         case EXECUTABLE:
+            // load data from executable into the page
+            sup_page_load(spe);
+
+         case FILE:
+            // load file
+         case STACK: 
+         // NO LONGER NEEDED. Only need to specify type for pages that create
+         // their supplementary page entries beforehand. 
+         default:
+            // fault address should exist between start of user stack and 
+            // its max size, and should be at most 32 bytes from stack 
+            // pointer to consider the PUSHA instruction.
+            if (spe->addr > PHYS_BASE - MAX_STACK_SIZE && 
+                fault_addr >= f->esp - 32 ){
+                  // add another stack page
+            }
+      } 
   }
 
   kill (f);
