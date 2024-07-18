@@ -2,6 +2,7 @@
 #include "threads/thread.h"
 #include "round.h"
 #include "palloc.h"
+#include "userprog/process.h"
 
 // initializes the supplementary page table.
 void sup_page_table_init(struct hash *sup_page_table)
@@ -69,11 +70,12 @@ bool sup_page_less(const struct hash_elem *a_, const struct hash_elem *b_,
   return a->addr < b->addr;
 }
 
-// References data in supplementary page table entry spe to load data into
-// a newly allocated page starting at virtual address spe->addr. This function
-// also adds the newly allocated page into the thread's page table and maps it
-// to a physical frame.
-//
+/* References data in supplementary page table entry spe to load data into
+a newly allocated page starting at virtual address spe->addr. This function
+also adds the newly allocated page into the thread's page table and maps it
+to a physical frame. Returns true if the page was successfully loaded and 
+mapped. Otherwise, returns false. */
+bool 
 sup_page_load(struct sup_page_entry *spe)
 {
   // if palloc_get_page fails, then there is no more space in user pool,
@@ -86,31 +88,41 @@ sup_page_load(struct sup_page_entry *spe)
     // swapping should be handled by this function as well.
     kpage = frame_evict();
 
-  frame_allocate();
-  if (spe->type == FILE)
-  {
-  }
+  frame_alloc(spe->addr);
 
   /*
   Different scenarios of loading data into our pages:
   1. loading data from the swap partition
   2. loading data from a file
   3. loading in an all-zeros page
-
-
   */
-  // load the page
-  // if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-  //   {
-  //     palloc_free_page (kpage);
-  //     return false;
-  //   }
-  // memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-  // /* Add the page to the process's address space. */
-  // if (!install_page (upage, kpage, writable))
-  //   {
-  //     palloc_free_page (kpage);
-  //     return false;
-  //   }
-}
+  // TODO: may need to update the "load from file" case to consider memory-mapped files.
+  // load from file (includes executable file)
+  if (spe->file != NULL)
+  {
+    // read data from file into kpage, and zero out the rest of 
+    // the page, if necessary.
+    file_seek(spe->file, spe->offset);
+    if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
+    {
+      palloc_free_page (kpage);
+      return false; 
+    }
+    memset (kpage + spe->read_bytes, 0, spe->zero_bytes); // can we just use PAL_ZERO flag during palloc_get_page call instead of this?
+
+    // add the page to the process's address space.
+    if (!install_page (spe->addr, kpage, spe->is_writable)) 
+      {
+        palloc_free_page (kpage);
+        return false; 
+      }
+  }
+
+  // load from swap partition
+
+  // load in an all-zeros page
+  if (spe->type == FILE)
+  {
+
+  }

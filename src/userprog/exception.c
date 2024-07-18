@@ -187,8 +187,8 @@ page_fault (struct intr_frame *f)
             // fault address should exist between start of user stack and 
             // its max size, and should be at most 32 bytes from stack 
             // pointer to consider the PUSHA instruction.
-            if (spe->addr > PHYS_BASE - MAX_STACK_SIZE && 
-                fault_addr >= f->esp - 32 ){
+            if (spe->addr > (int *) PHYS_BASE - MAX_STACK_SIZE && 
+                fault_addr >= (int *) f->esp - 32 ){
                   // add another stack page
             }
       } 
