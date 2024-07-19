@@ -1,14 +1,13 @@
 #include "vm/frame.h"
 #include "threads/palloc.h"
+#include "vm/page.h"
+#include "vm/swap.h"
 
 /* List of all frames occupying space in physical memory. */
-struct list frame_table;
-
-/* handle synchronization during operations on frame table. */
-struct lock frame_table_lock;
+static struct list frame_table;
 
 /* Clock hand for page eviction (clock) algorithm. */
-int clock_hand = 0;
+static int clock_hand = 0;
 
 /* initializes frame table list and lock*/
 void
@@ -31,7 +30,7 @@ frame_alloc (void *page) {
   // if palloc_get_page fails, then there is no more space in user pool,
   // and we need to evict one of the pages currently occupying a frame
   if (frame == NULL) {
-      if ((frame = evict()) == NULL)
+      if ((frame = frame_evict()) == NULL)
       {
         lock_release(&frame_table_lock);
         return NULL;
@@ -41,7 +40,7 @@ frame_alloc (void *page) {
   struct frame_table_entry *fte = malloc (sizeof (struct frame_table_entry));
   fte->frame = frame;
   fte->owner = thread_current();
-  fte->page = page;
+  fte->spe = get_sup_page_entry(page);
   list_push_back (&frame_table, &fte->frame_elem);
 
   lock_release(&frame_table_lock);
@@ -60,11 +59,12 @@ frame_free (struct frame_table_entry *fte) {
   lock_release(&frame_table_lock);
 }
 
-/* Evicts a page from the frame table using the clock algorithm.
-The evicted page will be saved to swap partition, if necessary. 
+/* Evicts a page from the frame table using the clock algorithm. The evicted 
+page will be saved to swap partition, if necessary. If successful, returns 
+the frame address that has been freed. Otherwise, returns NULL.
 */
-bool
-evict() {
+void * 
+frame_evict() {
   // page eviction shouldn't be needed if there are no frames in the frame 
   // table to begin with.
   ASSERT(size(&frame_table) > 0);
@@ -77,6 +77,5 @@ evict() {
   // file-loaded pages should be written back to file system, if dirty.
 
   // non file-loaded pages should be written to swap partition.
-  swap_insert(fte->page);
-
+  swap_to_disk(fte);
 }

@@ -4,9 +4,6 @@
 #include <stdbool.h>
 #include <hash.h>
 
-/* handle synchronization during operations on supplementary page table. */
-struct lock sup_page_table_lock;
-
 /* type of data that is represented by a page_entry*/
 enum page_type {
   FILE,

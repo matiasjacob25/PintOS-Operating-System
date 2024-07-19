@@ -3,6 +3,7 @@
 #include "round.h"
 #include "palloc.h"
 #include "userprog/process.h"
+#include "vm/frame.h"
 
 // initializes the supplementary page table.
 void sup_page_table_init(struct hash *sup_page_table)
@@ -78,17 +79,8 @@ mapped. Otherwise, returns false. */
 bool 
 sup_page_load(struct sup_page_entry *spe)
 {
-  // if palloc_get_page fails, then there is no more space in user pool,
-  // and we need to evict one of the pages that were previously allocated
-  // using palloc_get_page(PAL_USER)
-  uint8_t *kpage = palloc_get_page(PAL_USER);
-  if (kpage == NULL)
-    // TODO: frame_evict should be some eviction policy that returns the
-    // kpage laddress that has become available
-    // swapping should be handled by this function as well.
-    kpage = frame_evict();
-
-  frame_alloc(spe->addr);
+  // allocate a physical frame for the page
+  int *frame = frame_alloc(spe->addr);
 
   /*
   Different scenarios of loading data into our pages:
@@ -101,20 +93,20 @@ sup_page_load(struct sup_page_entry *spe)
   // load from file (includes executable file)
   if (spe->file != NULL)
   {
-    // read data from file into kpage, and zero out the rest of 
+    // read data from file into frame, and zero out the rest of 
     // the page, if necessary.
     file_seek(spe->file, spe->offset);
-    if (file_read (spe->file, kpage, spe->read_bytes) != (int) spe->read_bytes)
+    if (file_read (spe->file, frame, spe->read_bytes) != (int) spe->read_bytes)
     {
-      palloc_free_page (kpage);
-      return false; 
+      palloc_free_page (frame);
+      return false;
     }
-    memset (kpage + spe->read_bytes, 0, spe->zero_bytes); // can we just use PAL_ZERO flag during palloc_get_page call instead of this?
+    memset (frame + spe->read_bytes, 0, spe->zero_bytes); // can we just use PAL_ZERO flag during palloc_get_page call instead of this?
 
     // add the page to the process's address space.
-    if (!install_page (spe->addr, kpage, spe->is_writable)) 
+    if (!install_page (spe->addr, frame, spe->is_writable)) 
       {
-        palloc_free_page (kpage);
+        palloc_free_page (frame);
         return false; 
       }
   }
@@ -126,3 +118,4 @@ sup_page_load(struct sup_page_entry *spe)
   {
 
   }
+}
