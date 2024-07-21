@@ -11,6 +11,21 @@
 #include "threads/palloc.h"
 #include "vm/page.h"
 
+// provides information about a memory mapped file
+static struct file_mapping {
+  // file_mapping id
+  mapid_t id;
+  // file being mapped
+  struct file *file;
+  // virtual address (in user address space) that file is being mapped to 
+  void *addr;
+  // number of pages being mapped
+  int page_cnt; 
+  // number of bytes filled by 0s on page page_cnt
+  int zero_bytes;
+  struct list_elem file_mapping_elem;
+};
+
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -214,6 +229,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 
       case SYS_MUNMAP: 
         validate_addr(esp+1);
+        handle_sys_munmap(*(esp+1));
         break;
 
       default:
@@ -306,27 +322,14 @@ handle_sys_write(int fd, char *buf_addr, unsigned size)
   return bytes_written;
 }
 
-//
-struct file_mapping {
-  // file_mapping id
-  mapid_t id;
-  // file being mapped
-  struct file *file;
-  // virtual address (in user address space) that file is being mapped to 
-  void *addr;
-  // number of pages being mapped
-  int page_cnt; 
-  struct list_elem file_mapping_elem;
-};
-
 // handler for mmap syscall which creates a single file_mapping and 
 // one sup_page_entry per page used to map contents of fd's file to 
 // user address space. If successful, returns an id for the mapping. 
 // Otherwise, returns -1. 
 mapid_t
-handle_sys_mmap(int fd, void *addr)
+handle_sys_mmap(int fd, void *addr_)
 {
-  int read_bytes, zero_bytes, page_cnt;
+  int read_bytes, zero_bytes_, page_cnt;
   struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
   struct file_mapping *fm = malloc(sizeof(struct file_mapping));
   struct file *file = get_open_file(fd);
@@ -336,105 +339,92 @@ handle_sys_mmap(int fd, void *addr)
   // validate fd, addr and file
   if (fd == 0 || 
       fd == 1 || 
-      addr == 0 || 
-      ((int ) addr % PGSIZE) != 0 || 
-      file == NULL ||
-      (read_bytes = file_length(file)) == 0) {
+      addr_ == 0 || 
+      ((int ) addr_ % PGSIZE) != 0 || 
+      file == NULL) {
       return -1;
   }
-  zero_bytes = PGSIZE - (read_bytes % PGSIZE);
-  page_cnt = (read_bytes + zero_bytes) / PGSIZE;
-  fm->addr = addr;
-  fm->file = file;
-  fm->page_cnt = page_cnt;
-  fm->id = thread_current()->next_mapid;
-  thread_current()->next_mapid++;
 
-  for (int i = 0; i < page_cnt; i++){
-    
-  }
-  
-  // create sup_page_entry for the memory mapped file
-  struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
-  if (spe != NULL)
+  // should NOT map empty files
+  lock_acquire(&filesys_lock);
+  if ((read_bytes = file_length(file)) == 0)
   {
-    spe->addr = addr;
-    spe->type = MMAP; // temporarily added
-    spe->is_writable = true; // temporarily added
-    spe->file = file;
-
-    spe->swap_idx = -1;
+    lock_release(&filesys_lock);
+    return -1;
   }
-  
+  lock_release(&filesys_lock);
+  zero_bytes_ = PGSIZE - (read_bytes % PGSIZE);
+  page_cnt = (read_bytes + zero_bytes_) / PGSIZE;
 
+  // store the file as a new instance of the file
+  lock_acquire(&filesys_lock);
+  fm->file = file_reopen(file);
+  lock_release(&filesys_lock);
 
-  while (read_bytes > 0 || zero_bytes > 0) 
+  // create sup_page_entry for each of the page_cnt pages needed
+  // to map fd's file
+  int page_read_bytes = 0;
+  for (int i = 0; i < page_cnt; i++){
+    spe = malloc(sizeof(struct sup_page_entry));
+    if (spe != NULL)
     {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      // create supplementary page table entry for this page
-      struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
-      if (spe != NULL)
-      {
-        spe->addr = pg_round_down(upage);
-        spe->type = EXECUTABLE; // temporarily added
-        spe->file = file;
-        spe->offset = ofs;
-        spe->read_bytes = page_read_bytes;
-        spe->zero_bytes = page_zero_bytes;
-        spe->is_writable = writable;
-        spe->swap_idx = -1;
-      }
-      else
-        return false;
-
-      // update thread's hash_table
-      if (hash_insert(&thread_current()->sup_page_table, 
-        &spe->sup_hash_elem) != NULL)
-        return false;
-
-      /* Advance. */
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      upage += PGSIZE;
-      ofs += PGSIZE;
+      spe->addr = addr_ + i * PGSIZE; // expect pg_rnd_down(addr_) % addr_ == 0
+      spe->type = MMAP; // temporarily added
+      spe->is_writable = true; // temporarily added
+      spe->file = fm->file;
+      spe->offset = i * PGSIZE;
+      spe->read_bytes = (page_read_bytes + PGSIZE) < read_bytes ? 
+                        PGSIZE : PGSIZE - zero_bytes_;
+      spe->zero_bytes = spe->read_bytes == PGSIZE ? 0 : zero_bytes_;
+      spe->swap_idx = -1;
     }
 
-  // // --- should be done in sup_page_load() ---
-  // // allocate and map page_cnt number of pages
-  // if ((first_kpage_addr = palloc_get_multiple(PAL_USER, page_cnt)) == NULL)
-  //   return -1;
-  
+    // update thread's hash_table
+    if (hash_insert(&thread_current()->sup_page_table, 
+      &spe->sup_hash_elem) != NULL)
+      return -1;
+  }
 
-
-
-
-
-  // determine number of consecutive pages to be mapped, then map them to 
-  // virtual address space starting at addr
-
-  /*
-  struct file_mapping {
-    mapid_t id;
-    struct file *file;
-    void *addr;
-    size_t size;
-    struct list_elem file_mapping_elem;
-  };
-  
-  */
-
-
+  // create and store file mapping 
+  fm->addr = addr_;
+  fm->file = file;
+  fm->page_cnt = page_cnt;
+  fm->zero_bytes = zero_bytes_;
+  fm->id = thread_current()->next_mapid;
+  thread_current()->next_mapid++;
+  list_push_back(&thread_current()->file_mappings, &fm->file_mapping_elem);
+  return fm->id;
 }
 
-mapid_t
+void
 handle_sys_munmap(mapid_t id)
 {
+  int write_size = 0;
+  void *uaddr = NULL;
+  struct file_mapping *fm = NULL; 
+  if ((fm = get_file_mapping(id)) == NULL)
+    NOT_REACHED();
+  
+  // remove pages allocated for each page in memory-mapped file
+  for (int i = 0; i < fm->page_cnt; i++)
+  {
+    uaddr = fm->addr + (i * PGSIZE);
+    write_size = i < (fm->page_cnt - 1) ? PGSIZE : (PGSIZE - fm->zero_bytes);
+    // write dirty pages of the file mapping to disk. Should NOT write back 
+    // the zero bytes that were used as filler on page fm->page_cnt.
+    if (pagedir_is_dirty(&thread_current()->pagedir, uaddr))
+    {
+      lock_acquire(&filesys_lock);
+      file_write_at(fm->file, uaddr, write_size, i * PGSIZE);
+      lock_release(&filesys_lock);
+    }
 
+    // remove supplementary page table and frame table data
+    page_free(uaddr);
+  }
+
+  // remove file_mapping from file_mappings list
+  list_remove(&fm->file_mapping_elem);
 }
 
 // Checks validity of the user-provided address.
@@ -495,6 +485,27 @@ get_open_file(int fd)
       
       if (tf->fd == fd)
         return tf->file_addr;
+      e = list_next(e);
+    }
+  return NULL;
+}
+
+// Returns a pointer to the file_mapping with id _id, if it exists in 
+// current thread's file_mappings list. Otherwise, returns NULL.
+struct file_mapping *
+get_file_mapping(mapid_t id_)
+{
+  struct file_mapping *fm = NULL;
+  struct list_elem *e = list_begin(&thread_current()->file_mappings);
+
+  // iterate through elements in thread's file_mappings until the 
+  // file_mapping with id id is found
+  while (e != list_end(&thread_current()->file_mappings))
+    {
+      fm = list_entry(e, struct file_mapping, file_mapping_elem);
+      
+      if (fm->id == id_)
+        return fm;
       e = list_next(e);
     }
   return NULL;

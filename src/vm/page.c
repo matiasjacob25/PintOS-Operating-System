@@ -4,6 +4,7 @@
 #include "palloc.h"
 #include "userprog/process.h"
 #include "vm/frame.h"
+#include "threads/malloc.h"
 
 // initializes the supplementary page table.
 void sup_page_table_init(struct hash *sup_page_table)
@@ -120,4 +121,21 @@ sup_page_load(struct sup_page_entry *spe)
   {
 
   }
+}
+
+// frees sup_page_entry data for page starting at address page_addr
+void
+page_free(void* page_addr) {
+  struct sup_page_entry *spe = get_sup_page_entry(page_addr);
+
+  // page_addr should exist as a sup_page_entry
+  ASSERT(spe != NULL);
+
+  // TODO:
+  // - need to remove the physical frame corresponding to page_addr
+  // - need to remove the mapping done by install_page between user space and
+  // physical frame
+
+  hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
+  free(spe);
 }

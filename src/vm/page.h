@@ -12,9 +12,9 @@ enum page_type {
   MMAP
 };
 
-/* provides additional information about a page of memory */
+/* provides additional information about a page of data */
 struct sup_page_entry {
-  /* virtual address of start of the page*/
+  /* virtual address (in user address space) of start of the page */
   void *addr;
   /* type of data that the page corresponds to */
   enum page_type type;
