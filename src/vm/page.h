@@ -8,7 +8,8 @@
 enum page_type {
   FILE,
   STACK,      
-  EXECUTABLE
+  EXECUTABLE,
+  MMAP
 };
 
 /* provides additional information about a page of memory */
@@ -31,8 +32,6 @@ struct sup_page_entry {
 
   /* index of page in swap table */
   int swap_idx; 
-  /* whether or not page exists in physical memory */
-  bool is_in_swap;
   /* hash_elem */
   struct hash_elem sup_hash_elem;
 };

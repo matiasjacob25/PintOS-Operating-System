@@ -505,16 +505,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (spe != NULL)
       {
         spe->addr = pg_round_down(upage);
-        spe->type = EXECUTABLE;
+        spe->type = EXECUTABLE; // temporarily added
         spe->file = file;
         spe->offset = ofs;
         spe->read_bytes = page_read_bytes;
         spe->zero_bytes = page_zero_bytes;
         spe->is_writable = writable;
-        // TODO: fix initializations for the fields below
-        // once you get better idea of how they're being used. 
         spe->swap_idx = -1;
-        spe->is_in_memory = false;
       }
       else
         return false;
@@ -523,26 +520,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (hash_insert(&thread_current()->sup_page_table, 
         &spe->sup_hash_elem) != NULL)
         return false;
-
-      // /* Get a page of memory. */
-      // uint8_t *kpage = palloc_get_page (PAL_USER);
-      // if (kpage == NULL)
-      //   return false;
-      
-      // /* Load this page. */
-      // if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-      //   {
-      //     palloc_free_page (kpage);
-      //     return false; 
-      //   }
-      // memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      // /* Add the page to the process's address space. */
-      // if (!install_page (upage, kpage, writable)) 
-      //   {
-      //     palloc_free_page (kpage);
-      //     return false; 
-      //   }
 
       /* Advance. */
       read_bytes -= page_read_bytes;

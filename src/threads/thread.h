@@ -125,6 +125,10 @@ struct thread
     /* project3 properties */
     // supplementary page table
     struct hash sup_page_table;
+    // list of memory mapped files
+    struct list file_mappings; 
+    // next available memory mapping id
+    int next_mapid;
   };
 
 /* A child process.

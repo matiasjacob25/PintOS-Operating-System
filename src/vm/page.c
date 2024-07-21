@@ -8,7 +8,9 @@
 // initializes the supplementary page table.
 void sup_page_table_init(struct hash *sup_page_table)
 {
-  hash_init(&thread_current()->sup_page_table, sup_page_hash, sup_page_less, NULL);
+  hash_init(&thread_current()->sup_page_table, 
+            sup_page_hash, sup_page_less, 
+            NULL);
 }
 
 /* constructor function for supplementary page table entry */

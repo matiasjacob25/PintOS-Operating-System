@@ -481,7 +481,6 @@ init_thread (struct thread *t, const char *name, int priority)
   
   sema_init(&t->sem_children_exec, 0);
   sema_init(&t->sem_children_wait, 0);
-  // t->waiting_on_child = -1;
   t->exit_status = -1;
   t->parent = running_thread();
   list_init(&t->children);
@@ -489,6 +488,10 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->fdt);
   t->next_fd = 2;
   t->exec_file = NULL;
+
+  t->next_mapid = 0;
+  sup_page_table_init(&t->sup_page_table);
+  list_init(&t->file_mappings);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
