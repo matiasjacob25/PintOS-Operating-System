@@ -1,10 +1,9 @@
 #include "vm/swap.h"
 #include "kernel/bitmap.h"
 #include "devices/block.h"
-#include "vaddr.h"
+#include "threads/vaddr.h"
 #include "vm/page.h"
 #include "threads/synch.h"
-#include "vm/frame.h"
 
 /* 
 => 512 bytes/block_sector 

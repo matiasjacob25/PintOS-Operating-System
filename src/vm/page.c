@@ -1,15 +1,14 @@
-#include "vm/page.h"
-#include "threads/thread.h"
-#include "round.h"
-#include "palloc.h"
-#include "userprog/process.h"
-#include "vm/frame.h"
+#include "threads/palloc.h"
 #include "threads/malloc.h"
-#include "userprog/pagedir.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "vm/page.h"
 #include "vm/frame.h"
 #include "vm/swap.h"
-#include "file.h"
-#include "vaddr.h"
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
+#include "filesys/file.h"
+#include <round.h>
 
 /* initializes the supplementary page table. */
 void sup_page_table_init(struct hash *sup_page_table)
@@ -119,7 +118,7 @@ sup_page_free(void* page_addr) {
   lock_release(&frame_table_lock);
   if (fte != NULL)
   {
-    page_out(page_addr);
+    frame_page_out(page_addr);
     frame_free(fte);
   }
 

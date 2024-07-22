@@ -5,8 +5,9 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "vm/page.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
+
 
 /* Define max size limit for user stack to be 8MB */
 #define MAX_STACK_SIZE (1024 * 1024 * 8)

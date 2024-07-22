@@ -1,3 +1,6 @@
+#ifndef VM_FRAME_H
+#define VM_FRAME_H
+
 #include <list.h>
 #include <stdbool.h>
 #include "vm/page.h"
@@ -26,3 +29,4 @@ void frame_free (struct frame_table_entry *fte);
 void* frame_evict();
 void frame_page_out(void* page_addr);
 
+#endif /* vm/frame.h */

@@ -4,6 +4,7 @@
 #include "vm/swap.h"
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
+#include "threads/thread.h"
 
 /* Clock hand for page eviction (clock) algorithm. */
 static int clock_hand = 0;
@@ -103,7 +104,7 @@ void *
 frame_evict() {
   // page eviction shouldn't be needed if there are no frames in the frame 
   // table to begin with.
-  ASSERT(size(&frame_table) > 0);
+  ASSERT(list_size(&frame_table) > 0);
 
   struct frame_table_entry *fte = NULL;
   struct list_elem *e = list_begin(&frame_table);

@@ -2,6 +2,7 @@
 #define USERPROG_SYSCALL_H
 
 #include <list.h>
+#include "lib/user/syscall.h"
 
 /* Struct that is to be inserted into a thread's 
 file descriptor table (fdt). */

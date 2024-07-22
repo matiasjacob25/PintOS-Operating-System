@@ -1,6 +1,9 @@
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
+
 #include <stddef.h>
 #include <inttypes.h>
-#include <off_t.h>
+#include "filesys/off_t.h"
 #include <stdbool.h>
 #include <hash.h>
 
@@ -36,5 +39,4 @@ bool sup_page_less(const struct hash_elem *a_,
 bool sup_page_load(struct sup_page_entry *spe);
 void sup_page_free(void* page_addr);
 
-
-
+#endif /* vm/page.h */
