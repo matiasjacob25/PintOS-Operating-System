@@ -512,7 +512,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (spe != NULL)
       {
         spe->addr = pg_round_down(upage);
-        spe->type = EXECUTABLE; // temporarily added
         spe->file = file;
         spe->offset = ofs;
         spe->read_bytes = page_read_bytes;
@@ -546,9 +545,6 @@ setup_stack (void **esp, char *file_name)
   bool success = false;
   int memory_used = 0;
 
-  // TODO: update setup stack s.t. it no longer allocates a page of memory 
-  // and maps the page. Instead, should be handled by page_fault_handler accordingly. 
-  
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
@@ -571,7 +567,6 @@ setup_stack (void **esp, char *file_name)
               memory_used = memory_used + strlen(token);
             }
 
-          //TODO: consider whether or not this limit on memory can be removed?
           if (memory_used > 4096)
             {
               palloc_free_page(kpage);
@@ -624,6 +619,26 @@ setup_stack (void **esp, char *file_name)
 
           free(fn_copy);
           free(argv);
+
+          // create sup_page_entry for initial stack page
+          struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
+          spe->addr = pg_round_down(*esp);
+          spe->is_writable = true;
+          spe->file = NULL;
+          spe->offset = 0;
+          spe->read_bytes = 0;
+          spe->zero_bytes = 0;
+          spe->swap_idx = -1;
+          hash_insert(&thread_current()->sup_page_table, 
+                      &spe->sup_hash_elem);
+
+          // create frame_table_entry for initial stack page
+          struct frame_table_entry *fte = malloc(
+            sizeof(struct frame_table_entry));
+          fte->frame = kpage;
+          fte->owner = thread_current();
+          fte->spe = spe;
+          list_push_back(&frame_table, &fte->frame_elem);
         }  
       else
         palloc_free_page (kpage);

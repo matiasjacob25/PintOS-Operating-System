@@ -5,9 +5,6 @@
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
 
-/* List of all frames occupying space in physical memory. */
-static struct list frame_table;
-
 /* Clock hand for page eviction (clock) algorithm. */
 static int clock_hand = 0;
 

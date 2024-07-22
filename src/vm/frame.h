@@ -2,6 +2,9 @@
 #include <stdbool.h>
 #include "vm/page.h"
 
+/* List of all frames occupying space in physical memory. */
+struct list frame_table;
+
 /* handle synchronization during operations on frame table. */
 struct lock frame_table_lock;
 

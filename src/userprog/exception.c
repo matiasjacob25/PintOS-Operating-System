@@ -188,7 +188,7 @@ page_fault(struct intr_frame *f)
             spe->file = NULL;
             spe->offset = 0;
             spe->read_bytes = 0;
-            spe->zero_bytes = PGSIZE;
+            spe->zero_bytes = 0;
             spe->swap_idx = -1;
             success = sup_page_load(spe);
          }
