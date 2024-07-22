@@ -5,8 +5,13 @@
 #include "userprog/process.h"
 #include "vm/frame.h"
 #include "threads/malloc.h"
+#include "userprog/pagedir.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
+#include "file.h"
+#include "vaddr.h"
 
-// initializes the supplementary page table.
+/* initializes the supplementary page table. */
 void sup_page_table_init(struct hash *sup_page_table)
 {
   hash_init(&thread_current()->sup_page_table, 
@@ -14,32 +19,8 @@ void sup_page_table_init(struct hash *sup_page_table)
             NULL);
 }
 
-/* constructor function for supplementary page table entry */
-// void
-// sup_page_entry_init (
-//   struct sup_page_entry *spe,
-//   void* uaddr,
-//   enum page_type type,
-//   uint32_t read_bytes,
-//   uint32_t zero_bytes,
-//   struct file *file,
-//   off_t offset,
-//   int swap_idx,
-//   bool is_in_memory)
-// {
-//   spe->uaddr = uaddr;
-//   spe->type = type;
-//   spe->read_bytes = read_bytes;
-//   spe->zero_bytes = zero_bytes;
-//   spe->file = file;
-//   spe->offset = offset;
-//   spe->swap_idx = swap_idx;
-//   spe->is_in_memory = is_in_memory;
-// }
-
-// Returns a pointer to the sup_page_entry that corresponds to a page containing the
-// virtual address addr.
-// Otherwise, returns NULL.
+/* Returns a pointer to the sup_page_entry that corresponds to a page containing the
+virtual address addr. Otherwise, returns NULL. */
 struct sup_page_entry *
 get_sup_page_entry(void *addr)
 {
@@ -54,7 +35,7 @@ get_sup_page_entry(void *addr)
   return NULL;
 }
 
-// returns a hash key that corresponds to hash_elem h
+/* returns a hash key that corresponds to hash_elem h */
 unsigned
 sup_page_hash(const struct hash_elem *h, void *aux)
 {
@@ -81,61 +62,72 @@ to a physical frame. Returns true if the page was successfully loaded and
 mapped. Otherwise, returns false. */
 bool 
 sup_page_load(struct sup_page_entry *spe)
-{
+{ 
   // allocate a physical frame for the page
-  int *frame = frame_alloc(spe->addr);
-
-  /*
-  Different scenarios of loading data into our pages:
-  1. loading data from the swap partition
-  2. loading data from a file
-  3. loading in an all-zeros page
-  */
-
-  // TODO: may need to update the "load from file" case to consider memory-mapped files.
-  // load from file (includes executable file)
-  if (spe->file != NULL)
+  struct frame_table_entry *fte = frame_alloc(spe->addr);
+  if (fte == NULL)
+    return false;
+  
+  // try to load data from swap partition
+  if (spe->swap_idx != -1)
+  {
+    swap_from_disk(fte);
+  }
+  // try to load data from disk
+  else if (fte->spe->file != NULL)
   {
     // read data from file into frame, and zero out the rest of 
     // the page, if necessary.
     file_seek(spe->file, spe->offset);
-    if (file_read (spe->file, frame, spe->read_bytes) != (int) spe->read_bytes)
+    if (file_read (spe->file, fte->frame, spe->read_bytes) != 
+        (int) spe->read_bytes)
     {
-      palloc_free_page (frame);
+      palloc_free_page (fte->frame);
       return false;
     }
-    memset (frame + spe->read_bytes, 0, spe->zero_bytes); // can we just use PAL_ZERO flag during palloc_get_page call instead of this?
-
-    // add the page to the process's address space.
-    if (!install_page (spe->addr, frame, spe->is_writable)) 
-      {
-        palloc_free_page (frame);
-        return false; 
-      }
+    memset ((int *) fte->frame + spe->read_bytes, 0, spe->zero_bytes);
   }
-
-  // load from swap partition
-
-  // load in an all-zeros page
-  if (spe->type == FILE)
+  // If not loading from file or swap, must be laoding in an all-zeros page
+  else
   {
-
+    memset(fte->frame, 0, PGSIZE);
   }
+
+  // update user_page to physical_frame mapping in thread's page table
+  if (!install_page (spe->addr, fte->frame, spe->is_writable)) 
+  {
+    palloc_free_page (fte->frame);
+    return false; 
+  }
+  return true;
 }
 
-// frees sup_page_entry data for page starting at address page_addr
+/* removes and frees sup_page_entry and frame_table_entry corresponding to 
+user page page_addr. Also updates thread's page directory to disable mapping
+between page_addr and physical memory */
 void
-page_free(void* page_addr) {
+sup_page_free(void* page_addr) {
   struct sup_page_entry *spe = get_sup_page_entry(page_addr);
-
+  struct frame_table_entry *fte = NULL;
   // page_addr should exist as a sup_page_entry
   ASSERT(spe != NULL);
 
-  // TODO:
-  // - need to remove the physical frame corresponding to page_addr
-  // - need to remove the mapping done by install_page between user space and
-  // physical frame
+  // If page_addr is mapped to physical memory, remove the corresponding
+  // frame_table_entry and free the physical frame. 
+  lock_acquire(&frame_table_lock);
+  fte = get_frame_table_entry(page_addr);
+  lock_release(&frame_table_lock);
+  if (fte != NULL)
+  {
+    page_out(page_addr);
+    frame_free(fte);
+  }
 
+  // remove the mapping done by install_page between user address space and 
+  // physical frame 
+  pagedir_clear_page(thread_current()->pagedir, page_addr);
+
+  // remove page from supplementary page table
   hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
   free(spe);
 }

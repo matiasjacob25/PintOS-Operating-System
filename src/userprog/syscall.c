@@ -368,8 +368,8 @@ handle_sys_mmap(int fd, void *addr_)
     spe = malloc(sizeof(struct sup_page_entry));
     if (spe != NULL)
     {
-      spe->addr = addr_ + i * PGSIZE; // expect pg_rnd_down(addr_) % addr_ == 0
-      spe->type = MMAP; // temporarily added
+      // expect pg_rnd_down(addr_) % addr_ == 0
+      spe->addr = (int *) addr_ + i * PGSIZE;
       spe->is_writable = true; // temporarily added
       spe->file = fm->file;
       spe->offset = i * PGSIZE;
@@ -405,26 +405,28 @@ handle_sys_munmap(mapid_t id)
   if ((fm = get_file_mapping(id)) == NULL)
     NOT_REACHED();
   
-  // remove pages allocated for each page in memory-mapped file
+  // remove file_mapping from file_mappings list
+  list_remove(&fm->file_mapping_elem);
+  
+  // remove and free sup_page_entry and frame_table_entry data, and remove 
+  // page mappings between virtual and physical memory.
   for (int i = 0; i < fm->page_cnt; i++)
   {
     uaddr = fm->addr + (i * PGSIZE);
-    write_size = i < (fm->page_cnt - 1) ? PGSIZE : (PGSIZE - fm->zero_bytes);
-    // write dirty pages of the file mapping to disk. Should NOT write back 
-    // the zero bytes that were used as filler on page fm->page_cnt.
-    if (pagedir_is_dirty(&thread_current()->pagedir, uaddr))
-    {
-      lock_acquire(&filesys_lock);
-      file_write_at(fm->file, uaddr, write_size, i * PGSIZE);
-      lock_release(&filesys_lock);
-    }
+    sup_page_free(uaddr);
+    // write_size = i < (fm->page_cnt - 1) ? PGSIZE : (PGSIZE - fm->zero_bytes);
+    // // write dirty pages of the file mapping to disk. Should NOT write back 
+    // // the zero bytes that were used as filler on page fm->page_cnt.
+    // if (pagedir_is_dirty(&thread_current()->pagedir, uaddr))
+    // {
+    //   lock_acquire(&filesys_lock);
+    //   file_write_at(fm->file, uaddr, write_size, i * PGSIZE);
+    //   lock_release(&filesys_lock);
+    // }
 
     // remove supplementary page table and frame table data
-    page_free(uaddr);
+    // sup_page_free(uaddr);
   }
-
-  // remove file_mapping from file_mappings list
-  list_remove(&fm->file_mapping_elem);
 }
 
 // Checks validity of the user-provided address.

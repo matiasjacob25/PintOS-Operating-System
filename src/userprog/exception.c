@@ -132,6 +132,7 @@ page_fault(struct intr_frame *f)
    bool write;       /* True: access was write, false: access was read. */
    bool user;        /* True: access by user, false: access by kernel. */
    void *fault_addr; /* Fault address. */
+   bool success;     /* True: successfully loaded page. Otherwise false. */
 
    /* Obtain faulting address, the virtual address that was
       accessed to cause the fault.  It may point to code or to
@@ -162,40 +163,39 @@ page_fault(struct intr_frame *f)
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-
-   // TODO: validate the fault address and determine the type of data that is being
-   // accessed (memory-mapped file, stack, or executable valid.)
-
+   
+   // check if page fault can be handled by loading a page into user memory.
    // check that fault_addr comes from user address space
    if (fault_addr != NULL && is_user_vaddr(fault_addr))
    {
-      // retrieve supplemental page table entry that corresponds to fault_addr
       struct sup_page_entry *spe = get_sup_page_entry(fault_addr);
       if (spe != NULL)
       {
-         switch (spe->type)
+         success = sup_page_load(spe);
+      }
+      else 
+      {
+         // check whether user is trying to access the stack.
+         // fault address should exist between start of user stack and
+         // its max size (8MB), and should be at most 32 bytes from stack
+         // pointer to accomodate the PUSHA instruction.
+         if (fault_addr > (int *)PHYS_BASE - MAX_STACK_SIZE &&
+             fault_addr >= (int *)f->esp - 32)
          {
-         case EXECUTABLE:
-            // load data from executable into the page
-            sup_page_load(spe);
-
-         case FILE:
-            // load file
-         case STACK:
-         // NO LONGER NEEDED. Only need to specify type for pages that create
-         // their supplementary page entries beforehand.
-         default:
-            // fault address should exist between start of user stack and
-            // its max size, and should be at most 32 bytes from stack
-            // pointer to consider the PUSHA instruction.
-            if (fault_addr > (int *)PHYS_BASE - MAX_STACK_SIZE &&
-                fault_addr >= (int *)f->esp - 32)
-            {
-               // add another stack page
-            }
+            spe = malloc(sizeof(struct sup_page_entry));
+            spe->addr = pg_round_down(fault_addr);
+            spe->is_writable = true;
+            spe->file = NULL;
+            spe->offset = 0;
+            spe->read_bytes = 0;
+            spe->zero_bytes = PGSIZE;
+            spe->swap_idx = -1;
+            success = sup_page_load(spe);
          }
       }
-
-      kill(f);
    }
+   // attempt to re-execute the instruction that invoked the page fault
+   if (success)
+      return;
+   kill(f);
 }

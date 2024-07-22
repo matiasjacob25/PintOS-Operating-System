@@ -12,13 +12,14 @@ struct frame_table_entry {
   struct thread *owner;
   /* reference to the sup_page_entry that corresponds to this frame */
   struct sup_page_entry *spe;
-  // bool reference_bit; // used for page eviction (clock) algorithm
   // bool is_pinned; // used to prevent deadlocks scenarios that can result from page eviction
 	struct list_elem frame_elem;
 };
 
 void frame_table_init(void);
+struct frame_table_entry * get_frame_table_entry(void* addr_);
 void * frame_alloc (void *page);
 void frame_free (struct frame_table_entry *fte);
 void* frame_evict();
+void frame_page_out(void* page_addr);
 

@@ -183,6 +183,13 @@ process_exit (void)
   // and add them to ready_list.
   if (cur->parent)
     sema_up(&cur->parent->sem_children_wait);
+  
+  // TODO: finish implementation for cleanup of page-related resources
+  // free the process' supplementary page table entires
+    // for each sup_page_entry with a swap_idx != -1, free the swap_table's 
+    // corresponding swap slot
+  // free the process' frame table entries
+
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

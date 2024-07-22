@@ -53,7 +53,7 @@ swap_to_disk(struct frame_table_entry *fte)
   lock_release(&swap_table_lock);
 
   if (swap_idx == BITMAP_ERROR)
-    NOT_REACHED();  // not sure if it's necessary to handle full swap partition
+    PANIC("Attempting to swap to disk, but swap partition is full.");
   fte->spe->swap_idx = swap_idx;
 
   // To write a page of data to swap partition, we must write to 8 consecutive
@@ -103,5 +103,4 @@ swap_from_disk(struct frame_table_entry *fte)
   bitmap_set(swap_table, fte->spe->swap_idx, false);
   lock_release(&swap_table_lock);
   fte->spe->swap_idx = -1;
-  // fte->spe->is_in_swap = false;
 }
