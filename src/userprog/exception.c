@@ -164,7 +164,7 @@ page_fault(struct intr_frame *f)
     struct sup_page_entry *spe = get_sup_page_entry(fault_addr);
     if (spe != NULL)
     {
-        success = sup_page_load(spe);
+      success = sup_page_load(spe);
     }
     else 
     {

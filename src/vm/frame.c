@@ -69,8 +69,8 @@ frame_alloc (void *page_addr) {
   {
     fte = malloc (sizeof (struct frame_table_entry));
     list_push_back (&frame_table, &fte->frame_elem);
+    fte->frame = frame;
   }
-  fte->frame = frame;
   fte->owner = thread_current();
   fte->spe = get_sup_page_entry(page_addr);
 
@@ -121,7 +121,7 @@ frame_evict() {
   // should NOT need to iterate through frame_table more than once to find
   // a page candidate to evict.
   for (int k = 0;
-       k < list_size(&frame_table);
+       k < 2 * list_size(&frame_table);
        clock_hand = (clock_hand + 1) % list_size(&frame_table),
        e = list_next(e),
        k++)
@@ -133,9 +133,8 @@ frame_evict() {
     }
     else
     {
-      clock_hand++;
-      e = list_next(e);
-      frame_page_out(fte);
+      clock_hand = (clock_hand + 1) % list_size(&frame_table);
+      frame_page_out(fte->spe->addr);
       return fte;
     } 
   }

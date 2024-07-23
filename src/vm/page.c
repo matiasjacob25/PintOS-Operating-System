@@ -89,7 +89,7 @@ sup_page_load(struct sup_page_entry *spe)
     }
     memset ((int *) fte->frame + spe->read_bytes, 0, spe->zero_bytes);
   }
-  // If not loading from file or swap, must be laoding in an all-zeros page
+  // If not loading from file or swap, must be loading in an all-zeros page
   else
   {
     memset(fte->frame, 0, PGSIZE);
@@ -121,6 +121,8 @@ sup_page_free(void* page_addr) {
   lock_release(&frame_table_lock);
   if (fte != NULL)
   {
+    // remove frame from frame table and free the physical frame
+    list_remove(&fte->frame_elem);
     frame_page_out(page_addr);
     frame_free(fte);
   }

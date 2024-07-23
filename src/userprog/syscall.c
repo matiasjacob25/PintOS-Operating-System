@@ -364,6 +364,7 @@ handle_sys_mmap(int fd, void *addr_)
   fm->file = file_reopen(file);
   lock_release(&filesys_lock);
 
+  // TODO: update to ensure that the allocated pages are consecutive
   // create sup_page_entry for each of the page_cnt pages needed
   // to map fd's file
   int page_read_bytes = 0;
@@ -415,7 +416,7 @@ handle_sys_munmap(mapid_t id)
   // page mappings between virtual and physical memory.
   for (int i = 0; i < fm->page_cnt; i++)
   {
-    uaddr = fm->addr + (i * PGSIZE);
+    uaddr = (int *) fm->addr + (i * PGSIZE);
     sup_page_free(uaddr);
     // write_size = i < (fm->page_cnt - 1) ? PGSIZE : (PGSIZE - fm->zero_bytes);
     // // write dirty pages of the file mapping to disk. Should NOT write back 
