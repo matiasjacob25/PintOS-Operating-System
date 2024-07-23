@@ -640,7 +640,9 @@ setup_stack (void **esp, char *file_name)
           fte->frame = kpage;
           fte->owner = thread_current();
           fte->spe = spe;
+          lock_acquire(&frame_table_lock);
           list_push_back(&frame_table, &fte->frame_elem);
+          lock_release(&frame_table_lock);
         }  
       else
         palloc_free_page (kpage);

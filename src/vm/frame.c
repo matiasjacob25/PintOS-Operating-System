@@ -22,6 +22,7 @@ frame_table_init ()
 // returns NULL. 
 struct frame_table_entry *
 get_frame_table_entry(void* addr_) {
+  ASSERT(lock_held_by_current_thread(&frame_table_lock));
   ASSERT(addr_ != NULL);
 
   struct list_elem *e;
@@ -68,9 +69,9 @@ frame_alloc (void *page_addr) {
   else
   {
     fte = malloc (sizeof (struct frame_table_entry));
+    fte->frame = frame;
     list_push_back (&frame_table, &fte->frame_elem);
   }
-  fte->frame = frame;
   fte->owner = thread_current();
   fte->spe = get_sup_page_entry(page_addr);
 
@@ -81,9 +82,9 @@ frame_alloc (void *page_addr) {
 /* Frees fte frame field, removes fte from the frame table, and frees fte. */
 void
 frame_free (struct frame_table_entry *fte) {
+  ASSERT(lock_held_by_current_thread(&frame_table_lock));
   ASSERT(fte != NULL);
   
-  lock_acquire(&frame_table_lock);
   // update clock_hand if fte is before clock_hand in frame_table
   struct list_elem *e = list_begin(&frame_table);
   for (int i = 0; e != list_end(&frame_table); e = list_next(e), i++) 
@@ -98,7 +99,6 @@ frame_free (struct frame_table_entry *fte) {
   list_remove(&fte->frame_elem);
   palloc_free_page(fte->frame);
   free(fte);
-  lock_release(&frame_table_lock);
 }
 
 /* Returns a pointer to the frame_table_entry containing the frame that was
@@ -107,6 +107,7 @@ find a page eviction candidate, returns NULL. */
 
 void * 
 frame_evict() {
+  ASSERT(lock_held_by_current_thread(&frame_table_lock));
   // page eviction shouldn't be needed if there are no frames in the frame 
   // table to begin with.
   ASSERT(list_size(&frame_table) > 0);
@@ -118,10 +119,10 @@ frame_evict() {
   for (int i = 0; i < clock_hand; i++)
     e = list_next(e);
 
-  // should NOT need to iterate through frame_table more than once to find
+  // should NOT need to iterate through frame_table more than twice to find
   // a page candidate to evict.
   for (int k = 0;
-       k < list_size(&frame_table);
+       k < 2 * list_size(&frame_table);
        clock_hand = (clock_hand + 1) % list_size(&frame_table),
        e = list_next(e),
        k++)
@@ -133,9 +134,8 @@ frame_evict() {
     }
     else
     {
-      clock_hand++;
-      e = list_next(e);
-      frame_page_out(fte);
+      clock_hand = (clock_hand + 1) % list_size(&frame_table);
+      frame_page_out(fte->spe->addr);
       return fte;
     } 
   }
@@ -147,10 +147,9 @@ from physical memory via call to sup_page_free(). If page is handled
 successfully, returns true. Otherwise, returns false. */
 void
 frame_page_out(void* page_addr) {
+  ASSERT(lock_held_by_current_thread(&frame_table_lock));
   // int bytes_written = -1;
   struct sup_page_entry *spe = get_sup_page_entry(page_addr);
-  
-  lock_acquire(&frame_table_lock);
   struct frame_table_entry *fte = get_frame_table_entry(page_addr);
   ASSERT(spe != NULL && fte != NULL);
 
@@ -165,7 +164,6 @@ frame_page_out(void* page_addr) {
     // if spe contains NO file, then write is physical frame to swap parition.
     swap_to_disk(fte);
   }
-  lock_release(&frame_table_lock);
 
   // if (bytes_written != 0)
   //   return true;

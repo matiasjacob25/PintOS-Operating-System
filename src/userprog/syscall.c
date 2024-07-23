@@ -225,8 +225,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_MMAP: 
         validate_addr(esp+1);
         validate_addr(esp+2);
-        // ensure value that buffer pointer points to is a valid address
-        validate_buffer(*(esp+2));
+        // // ensure value that buffer pointer points to is a valid address
+        // validate_buffer(*(esp+2));
         f->eax = handle_sys_mmap(*(esp+1), *(esp+2));
         break; 
 
@@ -342,7 +342,7 @@ handle_sys_mmap(int fd, void *addr_)
   // validate fd, addr and file
   if (fd == 0 || 
       fd == 1 || 
-      addr_ == 0 || 
+      addr_ == NULL || 
       ((int ) addr_ % PGSIZE) != 0 || 
       file == NULL) {
       return -1;
@@ -415,7 +415,7 @@ handle_sys_munmap(mapid_t id)
   // page mappings between virtual and physical memory.
   for (int i = 0; i < fm->page_cnt; i++)
   {
-    uaddr = fm->addr + (i * PGSIZE);
+    uaddr = (int *) fm->addr + (i * PGSIZE);
     sup_page_free(uaddr);
     // write_size = i < (fm->page_cnt - 1) ? PGSIZE : (PGSIZE - fm->zero_bytes);
     // // write dirty pages of the file mapping to disk. Should NOT write back 
