@@ -23,6 +23,7 @@ int handle_sys_write(int fd, char *buf_addr, unsigned size);
 mapid_t handle_sys_mmap(int fd, void *addr_);
 void handle_sys_munmap(mapid_t id);
 void *validate_addr (void *ptr);
+void validate_buffer (void *b);
 int fdt_push(struct file *f);
 struct file *get_open_file(int fd);
 struct file_mapping *get_file_mapping(mapid_t id_);

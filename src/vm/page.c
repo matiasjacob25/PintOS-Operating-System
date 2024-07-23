@@ -76,7 +76,7 @@ sup_page_load(struct sup_page_entry *spe)
     swap_from_disk(fte);
   }
   // try to load data from disk
-  else if (fte->spe->file != NULL)
+  else if (spe->file != NULL)
   {
     // read data from file into frame, and zero out the rest of 
     // the page, if necessary.

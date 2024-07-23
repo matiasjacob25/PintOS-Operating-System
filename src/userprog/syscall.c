@@ -57,7 +57,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_EXEC:
         validate_addr(esp+1);
         // ensure value that file pointer points to is a valid address
-        validate_addr(*(esp+1));
+        validate_buffer(*(esp+1));
         f->eax = process_execute(*(esp+1));
         break;
 
@@ -70,7 +70,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(esp+1);
         validate_addr(esp+2);
         // ensure value that file pointer points to is a valid address
-        validate_addr(*(esp+1));
+        validate_buffer(*(esp+1));
 
         lock_acquire(&filesys_lock);
         f->eax = filesys_create(*(esp+1), *(esp+2));
@@ -80,7 +80,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_REMOVE:
         validate_addr(esp+1);
         // ensure value that file pointer points to is a valid address
-        validate_addr(*(esp+1));
+        validate_buffer(*(esp+1));
 
         lock_acquire(&filesys_lock);
         f->eax = filesys_remove(*(esp+1));
@@ -90,7 +90,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_OPEN:
         validate_addr(esp+1);
         // ensure value that file pointer points to is a valid address
-        validate_addr(*(esp+1));
+        validate_buffer(*(esp+1));
 
         lock_acquire(&filesys_lock);
         file = filesys_open(*(esp+1));
@@ -128,7 +128,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(esp+2);
         validate_addr(esp+3);
         // ensure value that buffer pointer points to is a valid address
-        validate_addr(*(esp+2));
+        validate_buffer(*(esp+2));
 
         lock_acquire(&filesys_lock);
         f->eax = handle_sys_read(*(esp+1), *(esp+2), *(esp+3));
@@ -140,7 +140,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(esp+2);
         validate_addr(esp+3);
         // ensure value that buffer pointer points to is a valid address
-        validate_addr(*(esp+2));
+        validate_buffer(*(esp+2));
 
         lock_acquire(&filesys_lock);
         f->eax = handle_sys_write(*(esp+1), *(esp+2), *(esp+3));
@@ -223,7 +223,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(esp+1);
         validate_addr(esp+2);
         // ensure value that buffer pointer points to is a valid address
-        validate_addr(*(esp+2));
+        validate_buffer(*(esp+2));
         f->eax = handle_sys_mmap(*(esp+1), *(esp+2));
         break; 
 
@@ -445,6 +445,16 @@ validate_addr (void *p)
       handle_sys_exit(cur->exit_status);
     }
   return p;
+}
+
+/* Checks if buffer's contents exists within a page with a valid uaddr,
+but has not yet loaded into user memory. If valid, then continue execution. 
+Otherwise, terminate the program. */
+void
+validate_buffer (void *b) 
+{
+    if (b == NULL || !is_user_vaddr(b))
+      handle_sys_exit(thread_current()->exit_status);
 }
 
 // Creates and pushes a thread_file object to the end of the

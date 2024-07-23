@@ -45,8 +45,13 @@ void *
 frame_alloc (void *page_addr) {
   ASSERT(page_addr != NULL);
   lock_acquire(&frame_table_lock);
+
   // should not allocate a frame for a page that already has a frame
-  ASSERT(get_frame_table_entry(page_addr) == NULL);
+  if (get_frame_table_entry(page_addr) != NULL)
+  {
+    lock_release(&frame_table_lock);
+    return NULL;
+  }
 
   struct frame_table_entry *fte = NULL;
   void *frame = palloc_get_page (PAL_USER);
