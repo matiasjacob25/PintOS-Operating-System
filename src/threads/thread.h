@@ -129,6 +129,9 @@ struct thread
     struct list file_mappings; 
     // next available memory mapping id
     int next_mapid;
+    // reference to esp from before
+    // most recent transition from user mode to kernel mode
+    void *esp;
   };
 
 /* A child process.

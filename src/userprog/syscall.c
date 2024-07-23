@@ -38,6 +38,9 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
+  // store f->esp prior to reference in case of kernel-invoked page fault
+  thread_current()->esp = f->esp;
+
   int *esp = validate_addr(f->esp);
   unsigned syscall_number = *esp;
   struct file *file = NULL;

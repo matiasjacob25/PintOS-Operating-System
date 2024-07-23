@@ -67,8 +67,6 @@ swap_to_disk(struct frame_table_entry *fte)
       (int *) fte->spe->addr + (sector_idx * BLOCK_SECTOR_SIZE)
     );
   }
-
-  //TODO: not sure if we need to reset any field values in spe after swapping to disk???
 }
 
 
