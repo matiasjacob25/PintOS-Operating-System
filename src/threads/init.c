@@ -127,6 +127,11 @@ main (void)
   filesys_init (format_filesys);
 #endif
 
+  // initialize frame table and its lock
+  frame_table_init();
+  // initialize swap table and its lock
+  swap_init();
+
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */

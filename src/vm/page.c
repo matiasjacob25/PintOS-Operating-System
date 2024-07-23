@@ -13,13 +13,13 @@
 /* initializes the supplementary page table. */
 void sup_page_table_init(struct hash *sup_page_table)
 {
-  hash_init(&thread_current()->sup_page_table, 
+  hash_init(sup_page_table, 
             sup_page_hash, sup_page_less, 
             NULL);
 }
 
-/* Returns a pointer to the sup_page_entry that corresponds to a page containing the
-virtual address addr. Otherwise, returns NULL. */
+/* Returns a pointer to the sup_page_entry with the page that virtual
+address addr exists within. If no such page exists, returns NULL. */
 struct sup_page_entry *
 get_sup_page_entry(void *addr)
 {
@@ -27,14 +27,15 @@ get_sup_page_entry(void *addr)
   struct hash_elem *e;
 
   spe.addr = (void *)pg_round_down(addr);
-  e = hash_find(&thread_current()->sup_page_table, &spe);
+  e = hash_find(&thread_current()->sup_page_table, &spe.sup_hash_elem);
 
   if (e != NULL)
     return hash_entry(e, struct sup_page_entry, sup_hash_elem);
   return NULL;
 }
 
-/* returns a hash key that corresponds to hash_elem h */
+/* returns a hash key that corresponds to page address (excluding offset) 
+of h */
 unsigned
 sup_page_hash(const struct hash_elem *h, void *aux)
 {
@@ -42,15 +43,17 @@ sup_page_hash(const struct hash_elem *h, void *aux)
       h,
       struct sup_page_entry,
       sup_hash_elem);
-  return hash_bytes(spe->addr, sizeof spe->addr);
+  return (((int32_t) spe->addr) >> PGBITS);
 }
 
 /* Returns true if page a's address is smaller than page b's. */
 bool sup_page_less(const struct hash_elem *a_, const struct hash_elem *b_,
                    void *aux)
 {
-  const struct sup_page_entry *a = hash_entry(a_, struct sup_page_entry, sup_hash_elem);
-  const struct sup_page_entry *b = hash_entry(b_, struct sup_page_entry, sup_hash_elem);
+  const struct sup_page_entry *a = hash_entry(a_, struct sup_page_entry, 
+  sup_hash_elem);
+  const struct sup_page_entry *b = hash_entry(b_, struct sup_page_entry, 
+  sup_hash_elem);
   return a->addr < b->addr;
 }
 

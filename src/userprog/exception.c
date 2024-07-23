@@ -133,7 +133,7 @@ page_fault(struct intr_frame *f)
    bool write;       /* True: access was write, false: access was read. */
    bool user;        /* True: access by user, false: access by kernel. */
    void *fault_addr; /* Fault address. */
-   bool success;     /* True: successfully loaded page. Otherwise false. */
+   bool success = false;     /* True: successfully loaded page. Otherwise false. */
 
    /* Obtain faulting address, the virtual address that was
       accessed to cause the fault.  It may point to code or to
@@ -155,15 +155,6 @@ page_fault(struct intr_frame *f)
    not_present = (f->error_code & PF_P) == 0;
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
-
-   /* To implement virtual memory, delete the rest of the function
-      body, and replace it with code that brings in the page to
-      which fault_addr refers. */
-   printf("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
    
    // check if page fault can be handled by loading a page into user memory.
    // check that fault_addr comes from user address space
@@ -198,5 +189,13 @@ page_fault(struct intr_frame *f)
    // attempt to re-execute the instruction that invoked the page fault
    if (success)
       return;
-   kill(f);
+    /* To implement virtual memory, delete the rest of the function
+      body, and replace it with code that brings in the page to
+      which fault_addr refers. */
+    printf("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+    kill(f);
 }

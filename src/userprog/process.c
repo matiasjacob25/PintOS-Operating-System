@@ -308,6 +308,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /* initialize hash_table, now that the thread is running*/
+  sup_page_table_init(&t->sup_page_table);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -403,7 +406,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
-  // TODO: update setup_stack to lazily load the 
   /* Set up stack. */
   if (!setup_stack (esp, file_name))
     goto done;
