@@ -21,6 +21,7 @@
 #include "userprog/syscall.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -156,6 +157,42 @@ process_exit (void)
   // allow writing to executable file
   if (cur->exec_file != NULL)
     file_allow_write(cur->exec_file);
+  
+  // unmap remaining memory mapped files
+  struct file_mapping *fm = NULL;
+  while (!list_empty(&cur->file_mappings))
+  {
+    fm = list_entry(list_pop_front(&cur->file_mappings),
+                    struct file_mapping, file_mapping_elem);
+    handle_sys_munmap(fm->id);
+  }
+
+  // TODO: finish implementation for cleanup of page-related resources
+  // free the process' supplementary page table entires
+    // for each sup_page_entry with a swap_idx != -1, free the swap_table's 
+    // corresponding swap slot
+  // free the process' frame table entries
+  // free sup_page_table and frame_table_entry elements. 
+
+  // struct list_elem *e = NULL;
+  // struct frame_table_entry *fte = NULL;
+  // struct sup_page_entry *spe = NULL;
+  // for (e = list_begin(&frame_table); 
+  //      e != list_end(&frame_table); 
+  //      e = list_next(e))
+  // {
+  //   fte = list_entry(e, 
+  //                    struct frame_table_entry, 
+  //                    frame_elem);
+  //   if (fte->owner == cur)
+  //   {
+  //     // sup_page_free(fte->spe->addr);
+  //     hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
+  //     pagedir_clear_page(thread_current()->pagedir, fte->spe->addr);
+  //     free(spe);
+  //     frame_free(fte);
+  //   }
+  // }
 
   // close all files in the file descriptor table, and free memory allocated 
   // for each thread_file.
@@ -183,13 +220,6 @@ process_exit (void)
   // and add them to ready_list.
   if (cur->parent)
     sema_up(&cur->parent->sem_children_wait);
-  
-  // TODO: finish implementation for cleanup of page-related resources
-  // free the process' supplementary page table entires
-    // for each sup_page_entry with a swap_idx != -1, free the swap_table's 
-    // corresponding swap slot
-  // free the process' frame table entries
-
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

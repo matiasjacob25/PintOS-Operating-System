@@ -11,19 +11,6 @@
 #include "threads/palloc.h"
 #include "vm/page.h"
 
-// provides information about a memory mapped file
-static struct file_mapping {
-  // file_mapping id
-  mapid_t id;
-  // file being mapped
-  struct file *file;
-  // virtual address (in user address space) that file is being mapped to 
-  void *addr;
-  // number of pages being mapped
-  int page_cnt; 
-  struct list_elem file_mapping_elem;
-};
-
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -420,7 +407,8 @@ handle_sys_munmap(mapid_t id)
   void *uaddr = NULL;
   struct file_mapping *fm = NULL; 
   if ((fm = get_file_mapping(id)) == NULL)
-    NOT_REACHED();
+    //NOT_REACHED();
+    return;
   
   // remove file_mapping from file_mappings list
   list_remove(&fm->file_mapping_elem);

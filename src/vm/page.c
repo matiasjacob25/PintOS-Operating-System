@@ -122,7 +122,6 @@ sup_page_free(void* page_addr) {
   if (fte != NULL)
   {
     lock_acquire(&frame_table_lock);
-    // 
     frame_page_out(page_addr);
     frame_free(fte);
     lock_release(&frame_table_lock);

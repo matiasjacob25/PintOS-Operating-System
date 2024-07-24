@@ -4,6 +4,9 @@
 #include <list.h>
 #include "lib/user/syscall.h"
 
+/* lock for file system operations */
+struct lock filesys_lock;
+
 /* Struct that is to be inserted into a thread's 
 file descriptor table (fdt). */
 struct thread_file
@@ -13,8 +16,18 @@ struct thread_file
   struct list_elem file_elem;
 };
 
-// lock for file system operations
-struct lock filesys_lock;
+/* provides information about a memory mapped file */
+struct file_mapping {
+  // file_mapping id
+  mapid_t id;
+  // file being mapped
+  struct file *file;
+  // virtual address (in user address space) that file is being mapped to 
+  void *addr;
+  // number of pages being mapped
+  int page_cnt; 
+  struct list_elem file_mapping_elem;
+};
 
 void syscall_init (void);
 void handle_sys_exit (int error_status);
