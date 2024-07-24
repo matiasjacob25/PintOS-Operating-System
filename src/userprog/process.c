@@ -520,6 +520,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         spe->zero_bytes = page_zero_bytes;
         spe->is_writable = writable;
         spe->swap_idx = -1;
+        spe->is_pinned = false;
       }
       else
         return false;
@@ -631,6 +632,7 @@ setup_stack (void **esp, char *file_name)
           spe->read_bytes = 0;
           spe->zero_bytes = 0;
           spe->swap_idx = -1;
+          spe->is_pinned = false;
           hash_insert(&thread_current()->sup_page_table, 
                       &spe->sup_hash_elem);
 

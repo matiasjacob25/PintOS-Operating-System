@@ -136,3 +136,21 @@ sup_page_free(void* page_addr) {
   hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
   free(spe);
 }
+
+/* pins the USER page that address addr exists inside. */
+void
+page_pin(void *addr) {
+  if (is_user_vaddr(addr)){
+    struct sup_page_entry *spe = get_sup_page_entry(addr);
+    spe->is_pinned = true;
+  }
+}
+
+/* unpins the USER page that address addr exists inside. */
+void
+page_unpin(void *addr) {
+  if (is_user_vaddr(addr)){
+    struct sup_page_entry *spe = get_sup_page_entry(addr);
+    spe->is_pinned = false;
+  }
+}

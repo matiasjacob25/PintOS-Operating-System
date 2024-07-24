@@ -27,6 +27,9 @@ struct sup_page_entry {
   int swap_idx; 
   /* hash_elem */
   struct hash_elem sup_hash_elem;
+
+  /* whether page is currently being pinned */
+  bool is_pinned;
 };
 
 void sup_page_table_init (struct hash *sup_page_table);
@@ -38,5 +41,7 @@ bool sup_page_less(const struct hash_elem *a_,
                    void *aux);
 bool sup_page_load(struct sup_page_entry *spe);
 void sup_page_free(void* page_addr);
+void page_pin(void *addr);
+void page_unpin(void *addr);
 
 #endif /* vm/page.h */

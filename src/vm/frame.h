@@ -18,7 +18,6 @@ struct frame_table_entry {
   struct thread *owner;
   /* reference to the sup_page_entry that corresponds to this frame */
   struct sup_page_entry *spe;
-  // bool is_pinned; // used to prevent deadlocks scenarios that can result from page eviction
 	struct list_elem frame_elem;
 };
 

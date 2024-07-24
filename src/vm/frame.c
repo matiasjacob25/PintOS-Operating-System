@@ -18,8 +18,8 @@ frame_table_init ()
 }
 
 // Returns pointer to the frame table entry containing the physical frame that 
-// maps to the virtual user page at address addr. If no such frame exists, 
-// returns NULL. 
+// maps to the virtual user page at address addr (within current thread's
+// address space). If no such frame exists, returns NULL. 
 struct frame_table_entry *
 get_frame_table_entry(void* addr_) {
   ASSERT(lock_held_by_current_thread(&frame_table_lock));
@@ -33,7 +33,7 @@ get_frame_table_entry(void* addr_) {
     struct frame_table_entry *fte = list_entry(e, 
                                                struct frame_table_entry, 
                                                frame_elem);
-    if (fte->spe->addr == addr_)
+    if (fte->spe->addr == addr_ && fte->owner == thread_current())
       return fte;
   }
   return NULL;
@@ -47,7 +47,9 @@ frame_alloc (void *page_addr) {
   ASSERT(page_addr != NULL);
   lock_acquire(&frame_table_lock);
 
-  // should not allocate a frame for a page that already has a frame
+  // different threads can map to the same page_addr because each thread has
+  // their own page directory. However, a single thread should NOT try to 
+  // map the same page_addr.
   if (get_frame_table_entry(page_addr) != NULL)
   {
     lock_release(&frame_table_lock);
@@ -134,9 +136,13 @@ frame_evict() {
     }
     else
     {
-      clock_hand = (clock_hand + 1) % list_size(&frame_table);
-      frame_page_out(fte->spe->addr);
-      return fte;
+      // skip pinned pages
+      if (!(fte->spe->is_pinned))
+      {
+        clock_hand = (clock_hand + 1) % list_size(&frame_table);
+        frame_page_out(fte->spe->addr);
+        return fte;
+      }
     } 
   }
   return NULL;

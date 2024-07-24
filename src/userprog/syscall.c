@@ -21,8 +21,6 @@ static struct file_mapping {
   void *addr;
   // number of pages being mapped
   int page_cnt; 
-  // number of bytes filled by 0s on page page_cnt
-  int zero_bytes;
   struct list_elem file_mapping_elem;
 };
 
@@ -133,9 +131,11 @@ syscall_handler (struct intr_frame *f UNUSED)
         // ensure value that buffer pointer points to is a valid address
         validate_buffer(*(esp+2));
 
+        // page_pin(*(esp+2));
         lock_acquire(&filesys_lock);
         f->eax = handle_sys_read(*(esp+1), *(esp+2), *(esp+3));
         lock_release(&filesys_lock);
+        // page_unpin(*(esp+2));
         break; 
 
       case SYS_WRITE: ; 
@@ -145,9 +145,11 @@ syscall_handler (struct intr_frame *f UNUSED)
         // ensure value that buffer pointer points to is a valid address
         validate_buffer(*(esp+2));
 
+        // page_pin(*(esp+2));
         lock_acquire(&filesys_lock);
         f->eax = handle_sys_write(*(esp+1), *(esp+2), *(esp+3));
         lock_release(&filesys_lock);
+        // page_unpin(*(esp+2));
         break; 
 
       case SYS_SEEK:
@@ -356,8 +358,17 @@ handle_sys_mmap(int fd, void *addr_)
     return -1;
   }
   lock_release(&filesys_lock);
-  zero_bytes_ = PGSIZE - (read_bytes % PGSIZE);
-  page_cnt = (read_bytes + zero_bytes_) / PGSIZE;
+
+  //ensure that the address that file is being mapped to does not overlap with 
+  //existing file_mappings
+  for (struct list_elem *e = list_begin(&thread_current()->file_mappings);
+       e != list_end(&thread_current()->file_mappings);
+       e = list_next(e))
+  {
+    fm = list_entry(e, struct file_mapping, file_mapping_elem);
+    if ((fm->addr < addr_) && (addr_ < (fm->addr + fm->page_cnt * PGSIZE)))
+      return -1;
+  }
 
   // store the file as a new instance of the file
   lock_acquire(&filesys_lock);
@@ -366,20 +377,24 @@ handle_sys_mmap(int fd, void *addr_)
 
   // create sup_page_entry for each of the page_cnt pages needed
   // to map fd's file
-  int page_read_bytes = 0;
-  for (int i = 0; i < page_cnt; i++){
+  zero_bytes_ = PGSIZE - (read_bytes % PGSIZE);
+  page_cnt = (read_bytes + zero_bytes_) / PGSIZE;
+  int total_read_bytes = 0;
+  for (int i = 0; i < page_cnt; i++, total_read_bytes += PGSIZE){
     spe = malloc(sizeof(struct sup_page_entry));
     if (spe != NULL)
     {
       // expect pg_rnd_down(addr_) % addr_ == 0
       spe->addr = (int *) addr_ + i * PGSIZE;
-      spe->is_writable = true; // temporarily added
+      spe->is_writable = true;
       spe->file = fm->file;
       spe->offset = i * PGSIZE;
-      spe->read_bytes = (page_read_bytes + PGSIZE) < read_bytes ? 
+      spe->read_bytes = (total_read_bytes + PGSIZE) < read_bytes ? 
                         PGSIZE : PGSIZE - zero_bytes_;
       spe->zero_bytes = spe->read_bytes == PGSIZE ? 0 : zero_bytes_;
       spe->swap_idx = -1;
+      // set to pinned, otherwise, will need to reload from disk
+      spe->is_pinned = true;
     }
 
     // update thread's hash_table
@@ -392,7 +407,6 @@ handle_sys_mmap(int fd, void *addr_)
   fm->addr = addr_;
   fm->file = file;
   fm->page_cnt = page_cnt;
-  fm->zero_bytes = zero_bytes_;
   fm->id = thread_current()->next_mapid;
   thread_current()->next_mapid++;
   list_push_back(&thread_current()->file_mappings, &fm->file_mapping_elem);

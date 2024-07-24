@@ -188,6 +188,7 @@ page_fault(struct intr_frame *f)
             spe->read_bytes = 0;
             spe->zero_bytes = 0;
             spe->swap_idx = -1;
+            spe->is_pinned = false;
             hash_insert(&thread_current()->sup_page_table, 
                         &spe->sup_hash_elem);
             success = sup_page_load(spe);
