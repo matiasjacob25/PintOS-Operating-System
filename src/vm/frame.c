@@ -32,7 +32,7 @@ frame_table_init()
     frame_table_size++;
   }
   lock_init(&frame_table_lock);
-  frame_table_size = 12;
+  // frame_table_size = 12;
 }
 
 // Returns pointer to the frame table entry containing the physical frame that
