@@ -57,14 +57,14 @@ swap_to_disk(struct frame_table_entry *fte)
 
   // To write a page of data to swap partition, we must write to 8 consecutive
   // block sectors starting at swap_idx*8 (since 1 page == 8 block_sectors)
-  for (
-    int sector_idx = swap_idx * SECTORS_PER_PAGE; 
-    sector_idx < sector_idx + SECTORS_PER_PAGE; sector_idx++)
+  int sector_idx = swap_idx * SECTORS_PER_PAGE;
+  for (int i = 0; i < SECTORS_PER_PAGE; i++)
+    // sector_idx < sector_idx + SECTORS_PER_PAGE; sector_idx++)
   {
     block_write(
       block_device, 
-      sector_idx, 
-      (int *) fte->frame + (sector_idx * BLOCK_SECTOR_SIZE)
+      sector_idx + i, 
+      (int *) fte->frame + ((sector_idx + i) * BLOCK_SECTOR_SIZE)
     );
   }
 }
@@ -81,14 +81,14 @@ swap_from_disk(struct frame_table_entry *fte)
 
   // To read the page of memory stored in swap partition, we must read the 8
   // block sectors starting at spe->swap_idx (since 1 page == 8 block_sectors)
-  for (
-    int sector_idx = fte->spe->swap_idx * SECTORS_PER_PAGE; 
-    sector_idx < sector_idx + SECTORS_PER_PAGE; sector_idx++)
+  int sector_idx = fte->spe->swap_idx * SECTORS_PER_PAGE;
+  for (int i = 0; i < SECTORS_PER_PAGE; i++)
+    // sector_idx < sector_idx + SECTORS_PER_PAGE; sector_idx++)
   {
     block_read(
       block_device, 
-      sector_idx, 
-      (int *) fte->frame + (sector_idx * BLOCK_SECTOR_SIZE)
+      sector_idx + i, 
+      (int *) fte->frame + ((sector_idx + i) * BLOCK_SECTOR_SIZE)
     );
   }
 

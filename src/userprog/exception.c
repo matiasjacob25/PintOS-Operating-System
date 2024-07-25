@@ -9,8 +9,8 @@
 #include "vm/page.h"
 
 
-/* Define max size limit for user stack to be 8MB */
-#define MAX_STACK_SIZE (1024 * 1024 * 8)
+/* Define max size limit for user stack to be 1MB */
+#define MAX_STACK_SIZE (1024 * 1024)
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -175,7 +175,7 @@ page_fault(struct intr_frame *f)
             u_esp = f->esp;
          // check whether user is trying to access the stack.
          // fault address should exist between start of user stack and
-         // its max size (8MB), and should be at most 32 bytes from stack
+         // its max size (1MB), and should be at most 32 bytes from stack
          // pointer to accomodate the PUSHA instruction.
          if (fault_addr > (int *)PHYS_BASE - MAX_STACK_SIZE &&
                fault_addr >= (int *)u_esp - 32)

@@ -73,13 +73,16 @@ sup_page_load(struct sup_page_entry *spe)
   // try to load data from swap partition
   if (spe->swap_idx != -1)
   {
+    lock_acquire(&frame_table_lock);
     swap_from_disk(fte);
+    lock_release(&frame_table_lock);
   }
   // try to load data from disk
   else if (spe->file != NULL)
   {
     // read data from file into frame, and zero out the rest of 
     // the page, if necessary.
+    lock_acquire(&frame_table_lock);
     file_seek(spe->file, spe->offset);
     if (file_read (spe->file, fte->frame, spe->read_bytes) != 
         (int) spe->read_bytes)
@@ -88,11 +91,14 @@ sup_page_load(struct sup_page_entry *spe)
       return false;
     }
     memset ((int *) fte->frame + spe->read_bytes, 0, spe->zero_bytes);
+    lock_release(&frame_table_lock);
   }
   // If not loading from file or swap, must be loading in an all-zeros page
   else
   {
+    lock_acquire(&frame_table_lock);
     memset(fte->frame, 0, PGSIZE);
+    lock_release(&frame_table_lock);
   }
 
   // update user_page to physical_frame mapping in thread's page table
