@@ -129,7 +129,14 @@ frame_evict() {
        e = list_next(e),
        k++)
   {
+    // reset e to start of frame_table if it reaches its end
+    if (e == list_end(&frame_table))
+      e = list_begin(&frame_table);
+
     fte = list_entry(e, struct frame_table_entry, frame_elem);
+
+    //printf("paddr: %p, idx: %d\n",fte->spe->addr, k);
+    
     if (pagedir_is_accessed(fte->owner->pagedir, fte->spe->addr))
     {
       pagedir_set_accessed(fte->owner->pagedir, fte->spe->addr, false);
@@ -158,6 +165,10 @@ frame_page_out(void* page_addr) {
   struct sup_page_entry *spe = get_sup_page_entry(page_addr);
   struct frame_table_entry *fte = get_frame_table_entry(page_addr);
   ASSERT(spe != NULL && fte != NULL);
+
+  // deactivate present bit, so that page_fault_handler can swap this page
+  // back in on next fault
+  pagedir_clear_page(thread_current()->pagedir, page_addr);
 
   // if spe contains file and is dirty, write to back to disk.
   // if spe contains file and is NOT dirty, do nothing.

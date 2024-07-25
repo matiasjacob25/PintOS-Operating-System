@@ -578,107 +578,116 @@ setup_stack (void **esp, char *file_name)
   bool success = false;
   int memory_used = 0;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  create sup_page_entry for initial stack page
+  struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
+  spe->addr = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  spe->is_writable = true;
+  spe->file = NULL;
+  spe->offset = 0;
+  spe->read_bytes = 0;
+  spe->zero_bytes = 0;
+  spe->swap_idx = -1;
+  spe->is_pinned = false;
+  hash_insert(&thread_current()->sup_page_table, 
+              &spe->sup_hash_elem);
+  success = sup_page_load(spe);
+
+  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  // struct frame_table_entry *fte = frame_alloc(((uint8_t *) PHYS_BASE) - 
+  //                                             PGSIZE);
+  // if (fte != NULL) 
+  //   {
+  //     memset(fte->frame, 0, PGSIZE);
+  // success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+  if (success)
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      *esp = PHYS_BASE;
+
+      // setup user stack according to calling convention
+      int argc = 0, i;
+      char *token, *save_ptr;
+      char *fn_copy = malloc(strlen(file_name)+1);
+      strlcpy(fn_copy, file_name, strlen(file_name)+1);
+
+      // count num of args
+      for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
+          token = strtok_r (NULL, " ", &save_ptr))
         {
-          *esp = PHYS_BASE;
+          argc++;
+          memory_used = memory_used + strlen(token);
+        }
 
-          // setup user stack according to calling convention
-          int argc = 0, i;
-          char *token, *save_ptr;
-          char *fn_copy = malloc(strlen(file_name)+1);
-          strlcpy(fn_copy, file_name, strlen(file_name)+1);
+      // if (memory_used > 4096)
+      //   {
+      //     palloc_free_page(kpage);
+      //     return false;
+      //   }
 
-          // count num of args
-          for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
-              token = strtok_r (NULL, " ", &save_ptr))
-            {
-              argc++;
-              memory_used = memory_used + strlen(token);
-            }
+      // push args onto the stack (left-to-right order)
+      int *argv = calloc(argc, sizeof(int));
+      for (token = strtok_r (file_name, " ", &save_ptr), i = 0;
+            token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++)
+        {
+          *esp -= strlen(token)+1;
+          memcpy(*esp, token, strlen(token)+1);
+          // store arg_addresses in argv s.t.
+          // argv[0] == file_name_addr, argv[1] == arg1_addr, and so on...
+          argv[i] = *esp;
+        }
 
-          if (memory_used > 4096)
-            {
-              palloc_free_page(kpage);
-              return false;
-            }
+      // word-align the stack pointer
+      uint8_t padding = 0;
+      while ((int)*esp % 4 != 0)
+        {
+          *esp -= sizeof(uint8_t);
+          memcpy(*esp, &padding, sizeof(uint8_t));
+        }
 
-          // push args onto the stack (left-to-right order)
-          int *argv = calloc(argc, sizeof(int));
-          for (token = strtok_r (file_name, " ", &save_ptr), i = 0;
-               token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++)
-            {
-              *esp -= strlen(token)+1;
-              memcpy(*esp, token, strlen(token)+1);
-              // store arg_addresses in argv s.t.
-              // argv[0] == file_name_addr, argv[1] == arg1_addr, and so on...
-              argv[i] = *esp;
-            }
+      // push null pointer sentinel
+      int zero = 0; 
+      *esp -= sizeof(int);
+      memcpy(*esp, &zero, sizeof(int));
 
-          // word-align the stack pointer
-          uint8_t padding = 0;
-          while ((int)*esp % 4 != 0)
-            {
-              *esp -= sizeof(uint8_t);
-              memcpy(*esp, &padding, sizeof(uint8_t));
-            }
+      // push memory addresses of args (right-to-left order)
+      for (int i = argc-1; i >= 0; i--)
+        {
+          *esp -= sizeof(char *);
+          // memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
+          memcpy(*esp, &argv[i], sizeof(char *));
+        }
 
-          // push null pointer sentinel
-          int zero = 0; 
-          *esp -= sizeof(int);
-          memcpy(*esp, &zero, sizeof(int));
+      // push argv, argc, and return address.
+      char **argv_ptr = *esp;
+      *esp -= sizeof(char **);
+      memcpy(*esp, &argv_ptr, sizeof(char **));
 
-          // push memory addresses of args (right-to-left order)
-          for (int i = argc-1; i >= 0; i--)
-            {
-              *esp -= sizeof(char *);
-              // memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
-              memcpy(*esp, &argv[i], sizeof(char *));
-            }
+      *esp -= sizeof(int);
+      memcpy(*esp, &argc, sizeof(int));
 
-          // push argv, argc, and return address.
-          char **argv_ptr = *esp;
-          *esp -= sizeof(char **);
-          memcpy(*esp, &argv_ptr, sizeof(char **));
+      *esp -= sizeof(int);
+      memcpy(*esp, &zero, sizeof(int));
 
-          *esp -= sizeof(int);
-          memcpy(*esp, &argc, sizeof(int));
+      free(fn_copy);
+      free(argv);
 
-          *esp -= sizeof(int);
-          memcpy(*esp, &zero, sizeof(int));
-
-          free(fn_copy);
-          free(argv);
-
-          // create sup_page_entry for initial stack page
-          struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
-          spe->addr = pg_round_down(*esp);
-          spe->is_writable = true;
-          spe->file = NULL;
-          spe->offset = 0;
-          spe->read_bytes = 0;
-          spe->zero_bytes = 0;
-          spe->swap_idx = -1;
-          spe->is_pinned = false;
-          hash_insert(&thread_current()->sup_page_table, 
-                      &spe->sup_hash_elem);
-
-          // create frame_table_entry for initial stack page
-          struct frame_table_entry *fte = malloc(
-            sizeof(struct frame_table_entry));
-          fte->frame = kpage;
-          fte->owner = thread_current();
-          fte->spe = spe;
-          lock_acquire(&frame_table_lock);
-          list_push_back(&frame_table, &fte->frame_elem);
-          lock_release(&frame_table_lock);
-        }  
-      else
-        palloc_free_page (kpage);
-    }
+      // update frame_table_entry for initial stack page
+      // struct frame_table_entry *fte = malloc(
+      //   sizeof(struct frame_table_entry));
+      // fte->frame = kpage;
+      // fte->owner = thread_current();
+      // fte->spe = spe;
+      // lock_acquire(&frame_table_lock);
+      // list_push_back(&frame_table, &fte->frame_elem);
+      // lock_release(&frame_table_lock);
+    }  
+  else
+  {
+    // struct frame_table_entry *fte = NULL;
+    // if ((fte = get_frame_table_entry(spe->addr)) != NULL)
+    //   frame_free(fte);
+    // free(spe);
+  }
+    // }
   return success;
 }
 
