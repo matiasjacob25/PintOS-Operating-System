@@ -403,7 +403,6 @@ handle_sys_mmap(int fd, void *addr_)
 void
 handle_sys_munmap(mapid_t id)
 {
-  int write_size = 0;
   void *uaddr = NULL;
   struct file_mapping *fm = NULL; 
   if ((fm = get_file_mapping(id)) == NULL)

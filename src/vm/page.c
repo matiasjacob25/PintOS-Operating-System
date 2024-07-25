@@ -98,15 +98,16 @@ sup_page_load(struct sup_page_entry *spe)
   // update user_page to physical_frame mapping in thread's page table
   if (!install_page (spe->addr, fte->frame, spe->is_writable)) 
   {
+    PANIC("install_page failed in sup_page_load");
     palloc_free_page (fte->frame);
     return false; 
   }
   return true;
 }
 
-/* removes and frees sup_page_entry and frame_table_entry corresponding to 
-user page page_addr. Also updates thread's page directory to disable mapping
-between page_addr and physical memory */
+/* removes and frees sup_page_entry and frame_table_entry corresponding to */
+/* frees the contents of sup_page_entry with addr page_addr, disables the 
+mapping between page_addr and its physical frame, and update fte->is_mapped. */
 void
 sup_page_free(void* page_addr) {
   struct sup_page_entry *spe = get_sup_page_entry(page_addr);
@@ -119,17 +120,14 @@ sup_page_free(void* page_addr) {
   lock_acquire(&frame_table_lock);
   fte = get_frame_table_entry(page_addr);
   lock_release(&frame_table_lock);
-  if (fte != NULL)
-  {
-    lock_acquire(&frame_table_lock);
+  
+  // page_addr should be mapped to a fte
+  ASSERT(fte != NULL);
+  lock_acquire(&frame_table_lock);
+  if (fte->spe->file != NULL)
     frame_page_out(page_addr);
-    frame_free(fte);
-    lock_release(&frame_table_lock);
-  }
-
-  // remove the mapping done by install_page between user address space and 
-  // physical frame 
-  pagedir_clear_page(thread_current()->pagedir, page_addr);
+  frame_free(fte);
+  lock_release(&frame_table_lock);
 
   // remove page from supplementary page table
   hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);

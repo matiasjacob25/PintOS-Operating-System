@@ -5,11 +5,14 @@
 #include <stdbool.h>
 #include "vm/page.h"
 
-/* List of all frames occupying space in physical memory. */
-struct list frame_table;
-
 /* handle synchronization during operations on frame table. */
 struct lock frame_table_lock;
+
+/* List of all frames occupying space in physical memory. */
+struct frame_table_entry *frame_table;
+
+/* number of frames in the frame table */
+int frame_table_size;
 
 struct frame_table_entry {
   /* physical frame address */
@@ -18,6 +21,8 @@ struct frame_table_entry {
   struct thread *owner;
   /* reference to the sup_page_entry that corresponds to this frame */
   struct sup_page_entry *spe;
+  /* whether or not some user page is currently mapped to this frame */
+  bool is_mapped;
 	struct list_elem frame_elem;
 };
 
