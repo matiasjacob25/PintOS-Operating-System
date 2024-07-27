@@ -412,7 +412,6 @@ handle_sys_munmap(mapid_t id)
   struct file_mapping *fm = NULL; 
   if ((fm = get_file_mapping(id)) == NULL)
     NOT_REACHED();
-    return;
   
   // remove and free sup_page_entry and frame_table_entry data, and remove 
   // page mappings between virtual and physical memory.xw
@@ -448,7 +447,6 @@ handle_sys_munmap(mapid_t id)
 
   // remove file_mapping from file_mappings list
   list_remove(&fm->file_mapping_elem);
-
 }
 
 // Checks validity of the user-provided address.
