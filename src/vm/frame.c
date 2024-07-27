@@ -22,7 +22,6 @@ frame_table_init ()
 // address space). If no such frame exists, returns NULL. 
 struct frame_table_entry *
 get_frame_table_entry(void* addr_) {
-  ASSERT(lock_held_by_current_thread(&frame_table_lock));
   ASSERT(addr_ != NULL);
 
   struct list_elem *e;
@@ -135,7 +134,7 @@ frame_evict() {
 
     fte = list_entry(e, struct frame_table_entry, frame_elem);
 
-    //printf("paddr: %p, idx: %d\n",fte->spe->addr, k);
+    printf("paddr: %p, idx: %d\n",fte->spe->addr, k);
     
     if (pagedir_is_accessed(fte->owner->pagedir, fte->spe->addr))
     {
@@ -161,10 +160,10 @@ successfully, returns true. Otherwise, returns false. */
 void
 frame_page_out(void* page_addr) {
   ASSERT(lock_held_by_current_thread(&frame_table_lock));
-  // int bytes_written = -1;
   struct sup_page_entry *spe = get_sup_page_entry(page_addr);
   struct frame_table_entry *fte = get_frame_table_entry(page_addr);
   ASSERT(spe != NULL && fte != NULL);
+  spe->is_pinned = true;
 
   // deactivate present bit, so that page_fault_handler can swap this page
   // back in on next fault
@@ -181,8 +180,6 @@ frame_page_out(void* page_addr) {
     // if spe contains NO file, then write is physical frame to swap parition.
     swap_to_disk(fte);
   }
-
-  // if (bytes_written != 0)
-  //   return true;
-  // return false;
+  
+  spe->is_pinned = false;
 }

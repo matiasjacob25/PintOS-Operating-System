@@ -30,6 +30,9 @@ struct sup_page_entry {
 
   /* whether page is currently being pinned */
   bool is_pinned;
+
+  /* whether page belongs to executable */
+  bool is_exec;
 };
 
 void sup_page_table_init (struct hash *sup_page_table);

@@ -10,6 +10,7 @@
 #include "lib/user/syscall.h"
 #include "threads/palloc.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -117,6 +118,11 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(esp+3);
         // ensure value that buffer pointer points to is a valid address
         validate_buffer(*(esp+2));
+        
+        // prevent writes to executable code
+        struct sup_page_entry *buf_spe = get_sup_page_entry(*(esp+2));
+        if (buf_spe != NULL && buf_spe->is_exec && !buf_spe->is_writable)
+          handle_sys_exit(-1);
 
         // page_pin(*(esp+2));
         lock_acquire(&filesys_lock);
@@ -214,8 +220,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_MMAP: 
         validate_addr(esp+1);
         validate_addr(esp+2);
-        // // ensure value that buffer pointer points to is a valid address
-        // validate_buffer(*(esp+2));
         f->eax = handle_sys_mmap(*(esp+1), *(esp+2));
         break; 
 
@@ -225,7 +229,8 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
 
       default:
-        NOT_REACHED();
+        // invalid syscall number
+        handle_sys_exit(-1);
     }
 }
 
@@ -322,11 +327,9 @@ mapid_t
 handle_sys_mmap(int fd, void *addr_)
 {
   int read_bytes, zero_bytes_, page_cnt;
-  struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
-  struct file_mapping *fm = malloc(sizeof(struct file_mapping));
+  struct sup_page_entry *spe = NULL;
+  struct file_mapping *fm = NULL;
   struct file *file = get_open_file(fd);
-  if (spe == NULL || fm == NULL)
-    return -1;
 
   // validate fd, addr and file
   if (fd == 0 || 
@@ -358,6 +361,8 @@ handle_sys_mmap(int fd, void *addr_)
   }
 
   // store the file as a new instance of the file
+  if ((fm = malloc(sizeof(struct file_mapping))) == NULL )
+    return -1;
   lock_acquire(&filesys_lock);
   fm->file = file_reopen(file);
   lock_release(&filesys_lock);
@@ -380,8 +385,8 @@ handle_sys_mmap(int fd, void *addr_)
                         PGSIZE : PGSIZE - zero_bytes_;
       spe->zero_bytes = spe->read_bytes == PGSIZE ? 0 : zero_bytes_;
       spe->swap_idx = -1;
-      // set to pinned, otherwise, will need to reload from disk
-      spe->is_pinned = true;
+      spe->is_pinned = false;
+      spe->is_exec = false;
     }
 
     // update thread's hash_table
@@ -403,35 +408,47 @@ handle_sys_mmap(int fd, void *addr_)
 void
 handle_sys_munmap(mapid_t id)
 {
-  int write_size = 0;
-  void *uaddr = NULL;
+  void *page_addr = NULL;
   struct file_mapping *fm = NULL; 
   if ((fm = get_file_mapping(id)) == NULL)
-    //NOT_REACHED();
+    NOT_REACHED();
     return;
   
-  // remove file_mapping from file_mappings list
-  list_remove(&fm->file_mapping_elem);
-  
   // remove and free sup_page_entry and frame_table_entry data, and remove 
-  // page mappings between virtual and physical memory.
+  // page mappings between virtual and physical memory.xw
+  struct frame_table_entry *fte = NULL;
+  struct sup_page_entry *spe = NULL;
   for (int i = 0; i < fm->page_cnt; i++)
   {
-    uaddr = (int *) fm->addr + (i * PGSIZE);
-    sup_page_free(uaddr);
-    // write_size = i < (fm->page_cnt - 1) ? PGSIZE : (PGSIZE - fm->zero_bytes);
-    // // write dirty pages of the file mapping to disk. Should NOT write back 
-    // // the zero bytes that were used as filler on page fm->page_cnt.
-    // if (pagedir_is_dirty(&thread_current()->pagedir, uaddr))
-    // {
-    //   lock_acquire(&filesys_lock);
-    //   file_write_at(fm->file, uaddr, write_size, i * PGSIZE);
-    //   lock_release(&filesys_lock);
-    // }
+    page_addr = (int *) fm->addr + (i * PGSIZE);
+    fte = get_frame_table_entry(page_addr);
+    spe = get_sup_page_entry(page_addr);
 
-    // remove supplementary page table and frame table data
-    // sup_page_free(uaddr);
+    // ignore memory-mapped file pages that have already been swapped out
+    if (spe->file->inode != fm->file->inode)
+      continue;
+
+    // skip writing back memory-mapped pages that have never been loaded.
+    if (fte != NULL)
+    { 
+      lock_acquire(&frame_table_lock);
+      // write dirty pages back to disk
+      if (pagedir_is_dirty(thread_current()->pagedir, page_addr))
+        // file_write_at(spe->file, fte->frame, spe->read_bytes, spe->offset);
+        file_write_at(spe->file, fte->frame, spe->read_bytes, spe->offset);
+      frame_free(fte);
+      lock_release(&frame_table_lock);
+    }
+
+    // remove page from supplementary page table
+    hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
+    free(spe);
+    pagedir_clear_page(thread_current()->pagedir, page_addr);
   }
+
+  // remove file_mapping from file_mappings list
+  list_remove(&fm->file_mapping_elem);
+
 }
 
 // Checks validity of the user-provided address.
@@ -517,6 +534,7 @@ get_file_mapping(mapid_t id_)
 
   // iterate through elements in thread's file_mappings until the 
   // file_mapping with id id is found
+  struct thread *cur = thread_current();
   while (e != list_end(&thread_current()->file_mappings))
     {
       fm = list_entry(e, struct file_mapping, file_mapping_elem);

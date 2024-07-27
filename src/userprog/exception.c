@@ -10,7 +10,7 @@
 
 
 /* Define max size limit for user stack to be 1MB */
-#define MAX_STACK_SIZE (1024 * 1024)
+#define MAX_STACK_SIZE (1024 * 1024 * 1)
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -159,45 +159,53 @@ page_fault(struct intr_frame *f)
   
   // check if page fault can be handled by loading a page into user memory.
   // check that fault_addr comes from user address space
-  if (fault_addr != NULL && is_user_vaddr(fault_addr))
+  if (not_present && fault_addr != NULL && is_user_vaddr(fault_addr))
   {
-    struct sup_page_entry *spe = get_sup_page_entry(fault_addr);
-    if (spe != NULL)
-    {
-        success = sup_page_load(spe);
-    }
-    else 
-    {
-         // in case of kernel-page fault, reference saved user stack pointer
-         if (!user)
-            u_esp = thread_current()->esp;
-         else
-            u_esp = f->esp;
-         // check whether user is trying to access the stack.
-         // fault address should exist between start of user stack and
-         // its max size (1MB), and should be at most 32 bytes from stack
-         // pointer to accomodate the PUSHA instruction.
-         if (fault_addr > (int *)PHYS_BASE - MAX_STACK_SIZE &&
-               fault_addr >= (int *)u_esp - 32)
-         {
-            spe = malloc(sizeof(struct sup_page_entry));
-            spe->addr = pg_round_down(fault_addr);
-            spe->is_writable = true;
-            spe->file = NULL;
-            spe->offset = 0;
-            spe->read_bytes = 0;
-            spe->zero_bytes = 0;
-            spe->swap_idx = -1;
-            spe->is_pinned = false;
-            hash_insert(&thread_current()->sup_page_table, 
-                        &spe->sup_hash_elem);
-            success = sup_page_load(spe);
-         }
-    }
-    // attempt to re-execute the instruction that invoked the page fault
-    if (success)
+   
+   //testing
+   if (fault_addr == 0xb805eb)
+      printf("Reached1\n");
+
+   struct sup_page_entry *spe = get_sup_page_entry(fault_addr);
+   if (spe != NULL)
+   {
+      success = sup_page_load(spe);
+   }
+   else 
+   {
+      // in the case of kernel-page fault, retrieve user's actual esp
+      if (!user)
+      {
+         u_esp = thread_current()->esp;
+      }
+      else
+         u_esp = f->esp;
+      // check whether user is trying to access the stack.
+      // fault address should exist between start of user stack and
+      // its max size (1MB), and should be at most 32 bytes from stack
+      // pointer to accomodate the PUSHA instruction.
+      if (fault_addr >= (int *)PHYS_BASE - MAX_STACK_SIZE &&
+            fault_addr >= (int *)u_esp - 32)
+      {
+         spe = malloc(sizeof(struct sup_page_entry));
+         spe->addr = pg_round_down(fault_addr);
+         spe->is_writable = true;
+         spe->file = NULL;
+         spe->offset = 0;
+         spe->read_bytes = 0;
+         spe->zero_bytes = 0;
+         spe->swap_idx = -1;
+         spe->is_pinned = false;
+         spe->is_exec= false;
+         hash_insert(&thread_current()->sup_page_table, 
+                     &spe->sup_hash_elem);
+         success = sup_page_load(spe);
+      }
+   }
+   // attempt to re-execute the instruction that invoked the page fault
+   if (success)
       return;
-    else
+   else
       handle_sys_exit(-1);
   }
   

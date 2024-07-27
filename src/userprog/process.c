@@ -160,11 +160,12 @@ process_exit (void)
   
   // unmap remaining memory mapped files
   struct file_mapping *fm = NULL;
-  while (!list_empty(&cur->file_mappings))
+  struct list_elem *e = list_begin(&cur->file_mappings);
+  while (e != list_end(&cur->file_mappings))
   {
-    fm = list_entry(list_pop_front(&cur->file_mappings),
-                    struct file_mapping, file_mapping_elem);
+    fm = list_entry(e, struct file_mapping, file_mapping_elem);
     handle_sys_munmap(fm->id);
+    e = list_next(e);
   }
 
   // TODO: finish implementation for cleanup of page-related resources
@@ -551,6 +552,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         spe->is_writable = writable;
         spe->swap_idx = -1;
         spe->is_pinned = false;
+        spe->is_exec = true;
       }
       else
         return false;
@@ -578,7 +580,7 @@ setup_stack (void **esp, char *file_name)
   bool success = false;
   int memory_used = 0;
 
-  create sup_page_entry for initial stack page
+  // create sup_page_entry for initial stack page
   struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
   spe->addr = ((uint8_t *) PHYS_BASE) - PGSIZE;
   spe->is_writable = true;
@@ -587,7 +589,8 @@ setup_stack (void **esp, char *file_name)
   spe->read_bytes = 0;
   spe->zero_bytes = 0;
   spe->swap_idx = -1;
-  spe->is_pinned = false;
+  spe->is_pinned = true;
+  spe->is_exec= false;
   hash_insert(&thread_current()->sup_page_table, 
               &spe->sup_hash_elem);
   success = sup_page_load(spe);
@@ -682,12 +685,15 @@ setup_stack (void **esp, char *file_name)
     }  
   else
   {
-    // struct frame_table_entry *fte = NULL;
-    // if ((fte = get_frame_table_entry(spe->addr)) != NULL)
-    //   frame_free(fte);
-    // free(spe);
+    struct frame_table_entry *fte = NULL;
+    if ((fte = get_frame_table_entry(spe->addr)) != NULL)
+    {
+      lock_acquire(&frame_table_lock);
+      frame_free(fte);
+      lock_release(&frame_table_lock);
+    }
+    free(spe);
   }
-    // }
   return success;
 }
 

@@ -65,10 +65,15 @@ mapped. Otherwise, returns false. */
 bool 
 sup_page_load(struct sup_page_entry *spe)
 { 
+  spe->is_pinned = true;
+
   // allocate a physical frame for the page
   struct frame_table_entry *fte = frame_alloc(spe->addr);
   if (fte == NULL)
+  {
+    spe->is_pinned = false;
     return false;
+  }
   
   // try to load data from swap partition
   if (spe->swap_idx != -1)
@@ -88,6 +93,7 @@ sup_page_load(struct sup_page_entry *spe)
         (int) spe->read_bytes)
     {
       palloc_free_page (fte->frame);
+      spe->is_pinned = false;
       return false;
     }
     memset ((int *) fte->frame + spe->read_bytes, 0, spe->zero_bytes);
@@ -105,8 +111,11 @@ sup_page_load(struct sup_page_entry *spe)
   if (!install_page (spe->addr, fte->frame, spe->is_writable)) 
   {
     palloc_free_page (fte->frame);
+    spe->is_pinned = false;
     return false; 
   }
+
+  spe->is_pinned = false;
   return true;
 }
 

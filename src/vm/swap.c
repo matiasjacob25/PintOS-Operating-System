@@ -64,7 +64,7 @@ swap_to_disk(struct frame_table_entry *fte)
     block_write(
       block_device, 
       sector_idx + i, 
-      (int *) fte->frame + ((sector_idx + i) * BLOCK_SECTOR_SIZE)
+      (uint8_t *) fte->frame + (i * BLOCK_SECTOR_SIZE)
     );
   }
 }
@@ -88,7 +88,7 @@ swap_from_disk(struct frame_table_entry *fte)
     block_read(
       block_device, 
       sector_idx + i, 
-      (int *) fte->frame + ((sector_idx + i) * BLOCK_SECTOR_SIZE)
+      (uint8_t *) fte->frame + (i * BLOCK_SECTOR_SIZE)
     );
   }
 
