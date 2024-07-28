@@ -19,6 +19,9 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "userprog/syscall.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -154,6 +157,43 @@ process_exit (void)
   // allow writing to executable file
   if (cur->exec_file != NULL)
     file_allow_write(cur->exec_file);
+  
+  // unmap remaining memory mapped files
+  struct file_mapping *fm = NULL;
+  struct list_elem *e = list_begin(&cur->file_mappings);
+  while (e != list_end(&cur->file_mappings))
+  {
+    fm = list_entry(e, struct file_mapping, file_mapping_elem);
+    handle_sys_munmap(fm->id);
+    e = list_next(e);
+  }
+
+  // TODO: finish implementation for cleanup of page-related resources
+  // free the process' supplementary page table entires
+    // for each sup_page_entry with a swap_idx != -1, free the swap_table's 
+    // corresponding swap slot
+  // free the process' frame table entries
+  // free sup_page_table and frame_table_entry elements. 
+
+  // struct list_elem *e = NULL;
+  // struct frame_table_entry *fte = NULL;
+  // struct sup_page_entry *spe = NULL;
+  // for (e = list_begin(&frame_table); 
+  //      e != list_end(&frame_table); 
+  //      e = list_next(e))
+  // {
+  //   fte = list_entry(e, 
+  //                    struct frame_table_entry, 
+  //                    frame_elem);
+  //   if (fte->owner == cur)
+  //   {
+  //     // sup_page_free(fte->spe->addr);
+  //     hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
+  //     pagedir_clear_page(thread_current()->pagedir, fte->spe->addr);
+  //     free(spe);
+  //     frame_free(fte);
+  //   }
+  // }
 
   // close all files in the file descriptor table, and free memory allocated 
   // for each thread_file.
@@ -299,6 +339,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /* initialize hash_table, now that the thread is running*/
+  sup_page_table_init(&t->sup_page_table);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -419,7 +462,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
+// bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -497,30 +540,33 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+      // create supplementary page table entry for this page
+      struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
+      if (spe != NULL)
+      {
+        spe->addr = pg_round_down(upage);
+        spe->file = file;
+        spe->offset = ofs;
+        spe->read_bytes = page_read_bytes;
+        spe->zero_bytes = page_zero_bytes;
+        spe->is_writable = writable;
+        spe->swap_idx = -1;
+        spe->is_pinned = false;
+        spe->is_exec = true;
+      }
+      else
         return false;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
+      // update thread's hash_table
+      if (hash_insert(&thread_current()->sup_page_table, 
+        &spe->sup_hash_elem) != NULL)
+        return false;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs += PGSIZE;
     }
   return true;
 }
@@ -534,84 +580,120 @@ setup_stack (void **esp, char *file_name)
   bool success = false;
   int memory_used = 0;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
+  // create sup_page_entry for initial stack page
+  struct sup_page_entry *spe = malloc(sizeof(struct sup_page_entry));
+  spe->addr = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  spe->is_writable = true;
+  spe->file = NULL;
+  spe->offset = 0;
+  spe->read_bytes = 0;
+  spe->zero_bytes = 0;
+  spe->swap_idx = -1;
+  spe->is_pinned = true;
+  spe->is_exec= false;
+  hash_insert(&thread_current()->sup_page_table, 
+              &spe->sup_hash_elem);
+  success = sup_page_load(spe);
+
+  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  // struct frame_table_entry *fte = frame_alloc(((uint8_t *) PHYS_BASE) - 
+  //                                             PGSIZE);
+  // if (fte != NULL) 
+  //   {
+  //     memset(fte->frame, 0, PGSIZE);
+  // success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+  if (success)
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      *esp = PHYS_BASE;
+
+      // setup user stack according to calling convention
+      int argc = 0, i;
+      char *token, *save_ptr;
+      char *fn_copy = malloc(strlen(file_name)+1);
+      strlcpy(fn_copy, file_name, strlen(file_name)+1);
+
+      // count num of args
+      for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
+          token = strtok_r (NULL, " ", &save_ptr))
         {
-          *esp = PHYS_BASE;
+          argc++;
+          memory_used = memory_used + strlen(token);
+        }
 
-          // setup user stack according to calling convention
-          int argc = 0, i;
-          char *token, *save_ptr;
-          char *fn_copy = malloc(strlen(file_name)+1);
-          strlcpy(fn_copy, file_name, strlen(file_name)+1);
+      // if (memory_used > 4096)
+      //   {
+      //     palloc_free_page(kpage);
+      //     return false;
+      //   }
 
-          // count num of args
-          for (token = strtok_r (fn_copy, " ", &save_ptr); token != NULL;
-              token = strtok_r (NULL, " ", &save_ptr))
-            {
-              argc++;
-              memory_used = memory_used + strlen(token);
-            }
+      // push args onto the stack (left-to-right order)
+      int *argv = calloc(argc, sizeof(int));
+      for (token = strtok_r (file_name, " ", &save_ptr), i = 0;
+            token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++)
+        {
+          *esp -= strlen(token)+1;
+          memcpy(*esp, token, strlen(token)+1);
+          // store arg_addresses in argv s.t.
+          // argv[0] == file_name_addr, argv[1] == arg1_addr, and so on...
+          argv[i] = *esp;
+        }
 
-          if (memory_used > 4096)
-            {
-              palloc_free_page(kpage);
-              return false;
-            }
+      // word-align the stack pointer
+      uint8_t padding = 0;
+      while ((int)*esp % 4 != 0)
+        {
+          *esp -= sizeof(uint8_t);
+          memcpy(*esp, &padding, sizeof(uint8_t));
+        }
 
-          // push args onto the stack (left-to-right order)
-          int *argv = calloc(argc, sizeof(int));
-          for (token = strtok_r (file_name, " ", &save_ptr), i = 0;
-               token != NULL; token = strtok_r (NULL, " ", &save_ptr), i++)
-            {
-              *esp -= strlen(token)+1;
-              memcpy(*esp, token, strlen(token)+1);
-              // store arg_addresses in argv s.t.
-              // argv[0] == file_name_addr, argv[1] == arg1_addr, and so on...
-              argv[i] = *esp;
-            }
+      // push null pointer sentinel
+      int zero = 0; 
+      *esp -= sizeof(int);
+      memcpy(*esp, &zero, sizeof(int));
 
-          // word-align the stack pointer
-          uint8_t padding = 0;
-          while ((int)*esp % 4 != 0)
-            {
-              *esp -= sizeof(uint8_t);
-              memcpy(*esp, &padding, sizeof(uint8_t));
-            }
+      // push memory addresses of args (right-to-left order)
+      for (int i = argc-1; i >= 0; i--)
+        {
+          *esp -= sizeof(char *);
+          // memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
+          memcpy(*esp, &argv[i], sizeof(char *));
+        }
 
-          // push null pointer sentinel
-          int zero = 0; 
-          *esp -= sizeof(int);
-          memcpy(*esp, &zero, sizeof(int));
+      // push argv, argc, and return address.
+      char **argv_ptr = *esp;
+      *esp -= sizeof(char **);
+      memcpy(*esp, &argv_ptr, sizeof(char **));
 
-          // push memory addresses of args (right-to-left order)
-          for (int i = argc-1; i >= 0; i--)
-            {
-              *esp -= sizeof(char *);
-              // memcpy(*esp, (argv + sizeof(char*) * i), sizeof(char *));
-              memcpy(*esp, &argv[i], sizeof(char *));
-            }
+      *esp -= sizeof(int);
+      memcpy(*esp, &argc, sizeof(int));
 
-          // push argv, argc, and return address.
-          char **argv_ptr = *esp;
-          *esp -= sizeof(char **);
-          memcpy(*esp, &argv_ptr, sizeof(char **));
+      *esp -= sizeof(int);
+      memcpy(*esp, &zero, sizeof(int));
 
-          *esp -= sizeof(int);
-          memcpy(*esp, &argc, sizeof(int));
+      free(fn_copy);
+      free(argv);
 
-          *esp -= sizeof(int);
-          memcpy(*esp, &zero, sizeof(int));
-
-          free(fn_copy);
-          free(argv);
-        }  
-      else
-        palloc_free_page (kpage);
+      // update frame_table_entry for initial stack page
+      // struct frame_table_entry *fte = malloc(
+      //   sizeof(struct frame_table_entry));
+      // fte->frame = kpage;
+      // fte->owner = thread_current();
+      // fte->spe = spe;
+      // lock_acquire(&frame_table_lock);
+      // list_push_back(&frame_table, &fte->frame_elem);
+      // lock_release(&frame_table_lock);
+    }  
+  else
+  {
+    struct frame_table_entry *fte = NULL;
+    if ((fte = get_frame_table_entry(spe->addr)) != NULL)
+    {
+      lock_acquire(&frame_table_lock);
+      frame_free(fte);
+      lock_release(&frame_table_lock);
     }
+    free(spe);
+  }
   return success;
 }
 
@@ -624,7 +706,7 @@ setup_stack (void **esp, char *file_name)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
