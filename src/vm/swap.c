@@ -59,7 +59,6 @@ swap_to_disk(struct frame_table_entry *fte)
   // block sectors starting at swap_idx*8 (since 1 page == 8 block_sectors)
   int sector_idx = swap_idx * SECTORS_PER_PAGE;
   for (int i = 0; i < SECTORS_PER_PAGE; i++)
-    // sector_idx < sector_idx + SECTORS_PER_PAGE; sector_idx++)
   {
     block_write(
       block_device, 
@@ -83,7 +82,6 @@ swap_from_disk(struct frame_table_entry *fte)
   // block sectors starting at spe->swap_idx (since 1 page == 8 block_sectors)
   int sector_idx = fte->spe->swap_idx * SECTORS_PER_PAGE;
   for (int i = 0; i < SECTORS_PER_PAGE; i++)
-    // sector_idx < sector_idx + SECTORS_PER_PAGE; sector_idx++)
   {
     block_read(
       block_device, 

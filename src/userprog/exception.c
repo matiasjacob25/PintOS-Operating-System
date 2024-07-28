@@ -161,11 +161,6 @@ page_fault(struct intr_frame *f)
   // check that fault_addr comes from user address space
   if (not_present && fault_addr != NULL && is_user_vaddr(fault_addr))
   {
-   
-   //testing
-   if (fault_addr == 0xb805eb)
-      printf("Reached1\n");
-
    struct sup_page_entry *spe = get_sup_page_entry(fault_addr);
    if (spe != NULL)
    {

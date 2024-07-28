@@ -589,19 +589,12 @@ setup_stack (void **esp, char *file_name)
   spe->read_bytes = 0;
   spe->zero_bytes = 0;
   spe->swap_idx = -1;
-  spe->is_pinned = true;
-  spe->is_exec= false;
+  spe->is_pinned = false;
+  spe->is_exec = false;
   hash_insert(&thread_current()->sup_page_table, 
               &spe->sup_hash_elem);
   success = sup_page_load(spe);
 
-  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  // struct frame_table_entry *fte = frame_alloc(((uint8_t *) PHYS_BASE) - 
-  //                                             PGSIZE);
-  // if (fte != NULL) 
-  //   {
-  //     memset(fte->frame, 0, PGSIZE);
-  // success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
   if (success)
     {
       *esp = PHYS_BASE;
@@ -620,11 +613,12 @@ setup_stack (void **esp, char *file_name)
           memory_used = memory_used + strlen(token);
         }
 
-      // if (memory_used > 4096)
-      //   {
-      //     palloc_free_page(kpage);
-      //     return false;
-      //   }
+      if (memory_used > 4096)
+      {
+        PANIC("Reached here!");
+        palloc_free_page(kpage);
+        return false;
+      }
 
       // push args onto the stack (left-to-right order)
       int *argv = calloc(argc, sizeof(int));
@@ -672,16 +666,6 @@ setup_stack (void **esp, char *file_name)
 
       free(fn_copy);
       free(argv);
-
-      // update frame_table_entry for initial stack page
-      // struct frame_table_entry *fte = malloc(
-      //   sizeof(struct frame_table_entry));
-      // fte->frame = kpage;
-      // fte->owner = thread_current();
-      // fte->spe = spe;
-      // lock_acquire(&frame_table_lock);
-      // list_push_back(&frame_table, &fte->frame_elem);
-      // lock_release(&frame_table_lock);
     }  
   else
   {
