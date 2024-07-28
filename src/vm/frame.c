@@ -143,8 +143,6 @@ frame_evict() {
       // skip pinned pages
       if (!(fte->spe->is_pinned))
       {
-        //testing:
-        printf("\npage_out: %p, idx: %d\n",fte->spe->addr, clock_hand);
         clock_hand = (clock_hand + 1) % list_size(&frame_table);
         frame_page_out(fte->spe->addr);
         return fte;
@@ -173,15 +171,11 @@ frame_page_out(void* page_addr) {
   // if spe contains file and is NOT dirty, do nothing.
   if (spe->file != NULL && spe->read_bytes > 0)
   {
-    //testing
-    printf("dirty_write %d bytes at upage %p to frame %p\n\n", spe->read_bytes, spe->addr, fte->frame);
     if (pagedir_is_dirty(thread_current()->pagedir, spe->addr))
       file_write_at(spe->file, fte->frame, spe->read_bytes, spe->offset);
   }
   else {
     // if spe contains NO file, then write is physical frame to swap parition.
-    //testing
-    // printf("reaches2");
     swap_to_disk(fte);
   }
   
