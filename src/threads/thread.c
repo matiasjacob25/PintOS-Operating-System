@@ -293,9 +293,7 @@ thread_exit (void)
   ASSERT (!intr_context ());
 
 #ifdef USERPROG
-  // enum intr_level old_level = intr_disable();
   process_exit ();
-  // intr_set_level (old_level);
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
