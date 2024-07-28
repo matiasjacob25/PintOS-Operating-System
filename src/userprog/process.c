@@ -168,32 +168,11 @@ process_exit (void)
     e = list_next(e);
   }
 
-  // TODO: finish implementation for cleanup of page-related resources
-  // free the process' supplementary page table entires
-    // for each sup_page_entry with a swap_idx != -1, free the swap_table's 
-    // corresponding swap slot
-  // free the process' frame table entries
-  // free sup_page_table and frame_table_entry elements. 
+  // cleanup and free sup_page_table elements and 
+  // corresponding frame_table_entry elements
+  if (!hash_empty(&cur->sup_page_table))
+    hash_destroy(&cur->sup_page_table, page_destroy);
 
-  // struct list_elem *e = NULL;
-  // struct frame_table_entry *fte = NULL;
-  // struct sup_page_entry *spe = NULL;
-  // for (e = list_begin(&frame_table); 
-  //      e != list_end(&frame_table); 
-  //      e = list_next(e))
-  // {
-  //   fte = list_entry(e, 
-  //                    struct frame_table_entry, 
-  //                    frame_elem);
-  //   if (fte->owner == cur)
-  //   {
-  //     // sup_page_free(fte->spe->addr);
-  //     hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
-  //     pagedir_clear_page(thread_current()->pagedir, fte->spe->addr);
-  //     free(spe);
-  //     frame_free(fte);
-  //   }
-  // }
 
   // close all files in the file descriptor table, and free memory allocated 
   // for each thread_file.

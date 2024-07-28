@@ -147,20 +147,20 @@ sup_page_free(void* page_addr) {
   free(spe);
 }
 
-/* pins the USER page that address addr exists inside. */
+/* frees sup_page_entry and its corresponding frame_table_entry elements. 
+This is a callback function to be used for sup_page_table's hash_destroy. */
 void
-page_pin(void *addr) {
-  if (is_user_vaddr(addr)){
-    struct sup_page_entry *spe = get_sup_page_entry(addr);
-    spe->is_pinned = true;
-  }
-}
-
-/* unpins the USER page that address addr exists inside. */
-void
-page_unpin(void *addr) {
-  if (is_user_vaddr(addr)){
-    struct sup_page_entry *spe = get_sup_page_entry(addr);
-    spe->is_pinned = false;
-  }
+page_destroy(struct hash_elem *spe_, void *aux)
+{
+  struct frame_table_entry *fte = NULL;
+  struct sup_page_entry *spe = hash_entry(spe_, 
+                                          struct sup_page_entry,
+                                          sup_hash_elem);
+  lock_acquire(&frame_table_lock);
+  fte = get_frame_table_entry(spe->addr);
+  if (fte != NULL)
+    frame_free(fte);
+  lock_release(&frame_table_lock);
+  pagedir_clear_page(thread_current()->pagedir, spe->addr);
+  free(spe);
 }

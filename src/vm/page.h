@@ -44,7 +44,6 @@ bool sup_page_less(const struct hash_elem *a_,
                    void *aux);
 bool sup_page_load(struct sup_page_entry *spe);
 void sup_page_free(void* page_addr);
-void page_pin(void *addr);
-void page_unpin(void *addr);
+void page_destroy(struct hash_elem *spe_, void *aux);
 
 #endif /* vm/page.h */

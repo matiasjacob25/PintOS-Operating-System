@@ -348,9 +348,15 @@ handle_sys_mmap(int fd, void *addr_)
     return -1;
   }
   lock_release(&filesys_lock);
+  zero_bytes_ = PGSIZE - (read_bytes % PGSIZE);
+  page_cnt = (read_bytes + zero_bytes_) / PGSIZE;
 
-  //ensure that the address that file is being mapped to does not overlap with 
-  //existing file_mappings
+  //ensure that the user pages that file is being mapped to does not overlap 
+  // with data segments that are already mapped
+  for (int i = 0; i < page_cnt; i++)
+    if (pagedir_get_page(thread_current()->pagedir, 
+                        (int *) addr_ + i * PGSIZE) != NULL)
+      return -1;
   for (struct list_elem *e = list_begin(&thread_current()->file_mappings);
        e != list_end(&thread_current()->file_mappings);
        e = list_next(e))
@@ -369,8 +375,6 @@ handle_sys_mmap(int fd, void *addr_)
 
   // create sup_page_entry for each of the page_cnt pages needed
   // to map fd's file
-  zero_bytes_ = PGSIZE - (read_bytes % PGSIZE);
-  page_cnt = (read_bytes + zero_bytes_) / PGSIZE;
   int total_read_bytes = 0;
   for (int i = 0; i < page_cnt; i++, total_read_bytes += PGSIZE){
     spe = malloc(sizeof(struct sup_page_entry));
@@ -433,16 +437,13 @@ handle_sys_munmap(mapid_t id)
       lock_acquire(&frame_table_lock);
       // write dirty pages back to disk
       if (pagedir_is_dirty(thread_current()->pagedir, page_addr))
-        // file_write_at(spe->file, fte->frame, spe->read_bytes, spe->offset);
         file_write_at(spe->file, fte->frame, spe->read_bytes, spe->offset);
-      frame_free(fte);
       lock_release(&frame_table_lock);
     }
 
-    // remove page from supplementary page table
+    // remove sup_page_entry and frame_table_entry data, and their mapping
     hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
-    free(spe);
-    pagedir_clear_page(thread_current()->pagedir, page_addr);
+    page_destroy(&spe->sup_hash_elem, NULL);
   }
 
   // remove file_mapping from file_mappings list
