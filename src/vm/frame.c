@@ -5,6 +5,7 @@
 #include "threads/synch.h"
 #include "userprog/pagedir.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 /* Clock hand for page eviction (clock) algorithm. */
 static int clock_hand = 0;
@@ -165,7 +166,8 @@ frame_page_out(void* page_addr) {
 
   // deactivate present bit, so that page_fault_handler can swap this page
   // back in on next fault
-  pagedir_clear_page(thread_current()->pagedir, page_addr);
+  pagedir_clear_page(fte->owner->pagedir, page_addr);
+  // pagedir_clear_page(thread_current()->pagedir, page_addr);
 
   // if spe contains file and is dirty, write to back to disk.
   // if spe contains file and is NOT dirty, do nothing.
@@ -178,6 +180,5 @@ frame_page_out(void* page_addr) {
     // if spe contains NO file, then write is physical frame to swap parition.
     swap_to_disk(fte);
   }
-  
   spe->is_pinned = false;
 }
