@@ -171,7 +171,7 @@ frame_page_out(void* page_addr) {
 
   // if spe contains file and is dirty, write to back to disk.
   // if spe contains file and is NOT dirty, do nothing.
-  if (spe->file != NULL && spe->read_bytes > 0)
+  if (spe->file != NULL && spe->read_bytes > 0 && !spe->is_exec)
   {
     if (pagedir_is_dirty(thread_current()->pagedir, spe->addr))
       file_write_at(spe->file, fte->frame, spe->read_bytes, spe->offset);

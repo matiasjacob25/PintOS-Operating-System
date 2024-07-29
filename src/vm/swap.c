@@ -93,7 +93,6 @@ swap_from_disk(struct frame_table_entry *fte)
   // update sup_page_entry and swap_table. Note that we only update swap_table
   // once all memory has been read from swap partition, so that in case of 
   // context switch, another thread does not try to utilize the same swap_idx.
-  // TODO: not sure if we need to zero out the swap partition that we just read from???
   lock_acquire(&swap_table_lock);
   bitmap_set(swap_table, fte->spe->swap_idx, false);
   lock_release(&swap_table_lock);
