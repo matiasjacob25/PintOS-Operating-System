@@ -648,14 +648,8 @@ setup_stack (void **esp, char *file_name)
     }  
   else
   {
-    struct frame_table_entry *fte = NULL;
-    if ((fte = get_frame_table_entry(spe->addr)) != NULL)
-    {
-      lock_acquire(&frame_table_lock);
-      frame_free(fte);
-      lock_release(&frame_table_lock);
-    }
-    free(spe);
+    hash_delete(&thread_current()->sup_page_table, &spe->sup_hash_elem);
+    page_destroy(&spe->sup_hash_elem, NULL);
   }
   return success;
 }
