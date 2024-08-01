@@ -6,6 +6,7 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "threads/thread.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -66,7 +67,8 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
-  return file_open (get_inode_from_path(name));
+  struct inode *inode = get_inode_from_path(name);
+  return file_open (inode);
 }
 
 /* Deletes the file named NAME.
@@ -135,7 +137,7 @@ get_inode_from_path(char *pathname)
     dir_lookup(dir, token, &inode);
     dir_close(dir);
     
-    if (inode->is_dir == false)
+    if (!inode->is_dir)
       PANIC("Intermidate pathname is NOT a directory");
     else
     {

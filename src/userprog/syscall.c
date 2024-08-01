@@ -211,8 +211,8 @@ syscall_handler (struct intr_frame *f UNUSED)
         if (dir != NULL)
         {
           // close current working directory open new directory.
-          dir_close(thread_current()->dir);
-          thread_current()->dir = dir;
+          dir_close(thread_current()->cwd);
+          thread_current()->cwd = dir;
           f->eax = true;
         }
         else
@@ -220,7 +220,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       
       case SYS_MKDIR:
-       
+
       case SYS_READDIR:
       case SYS_ISDIR:
       case SYS_INUMBER:
