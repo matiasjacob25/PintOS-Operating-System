@@ -117,7 +117,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         lock_release(&filesys_lock);
         break; 
 
-      case SYS_WRITE: ; 
+      case SYS_WRITE:  
         validate_addr(esp+1);
         validate_addr(esp+2);
         validate_addr(esp+3);
@@ -200,7 +200,30 @@ syscall_handler (struct intr_frame *f UNUSED)
             handle_sys_exit(-1);
           }
         break; 
+      
+      case SYS_CHDIR:
+        validate_addr(esp+1);
+        validate_addr(*(esp+1));
 
+        struct dir *dir = NULL;
+        dir = dir_open(get_inode_from_path(*(esp+1)));
+
+        if (dir != NULL)
+        {
+          // close current working directory open new directory.
+          dir_close(thread_current()->dir);
+          thread_current()->dir = dir;
+          f->eax = true;
+        }
+        else
+          f->eax = false;
+        break;
+      
+      case SYS_MKDIR:
+       
+      case SYS_READDIR:
+      case SYS_ISDIR:
+      case SYS_INUMBER:
       default:
         NOT_REACHED();
     }

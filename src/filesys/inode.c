@@ -55,14 +55,17 @@ bytes_to_sectors (off_t size)
 /* In-memory inode. */
 struct inode 
   {
-    struct list_elem elem;              /* Element in inode list. */
-    block_sector_t sector;              /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct inode_disk data;             /* Inode content. */
+    struct list_elem elem;           /* Element in inode list. */
+    block_sector_t sector;           /* Sector number of disk location. */
+    int open_cnt;                    /* Number of openers. */
+    bool removed;                    /* True if deleted, false otherwise. */
+    int deny_write_cnt;              /* 0: writes ok, >0: deny writes. */
+    struct inode_disk data;          /* Inode content. */
 
-    struct lock lock;                   /* Inode lock. */
+    struct lock lock;                /* Inode lock. */
+    // is_dir is to be used later to prevent writing to inodes that are 
+    // directories instead of actual files. 
+    bool is_dir;                     /* Whether or not inode is a directory. */
   };
 
 /* define static functions */
@@ -76,8 +79,6 @@ static bool
 inode_grow_indirect(struct inode_disk *disk_inode, uint32_t *sectors_left);
 static bool 
 inode_grow (struct inode_disk *disk_inode, off_t length);
-static bool
-inode_alloc (struct inode_disk *disk_inode, off_t length);
 // static bool inode_create_indirect (...);
 // static bool inode_create_db_indirect (...);
 

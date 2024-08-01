@@ -120,6 +120,8 @@ struct thread
     int next_fd;
     // file being executed by this process
     struct file *exec_file;
+    // pointer to thread's current working directory.
+    struct dir *cwd;
   };
 
 /* A child process.

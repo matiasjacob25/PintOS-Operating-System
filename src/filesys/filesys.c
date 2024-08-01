@@ -66,14 +66,7 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
-  struct dir *dir = dir_open_root ();
-  struct inode *inode = NULL;
-
-  if (dir != NULL)
-    dir_lookup (dir, name, &inode);
-  dir_close (dir);
-
-  return file_open (inode);
+  return file_open (get_inode_from_path(name));
 }
 
 /* Deletes the file named NAME.
@@ -100,4 +93,55 @@ do_format (void)
     PANIC ("root directory creation failed");
   free_map_close ();
   printf ("done.\n");
+}
+
+// TODO: add handling for special cases like ".." and "."
+/* Returns a pointer to the inode of the last token in PATHNAME. 
+Returns NULL if the inode for the last token in PATHNAME does not exist.
+Note that the returned inode may correspond to a file OR a directory. */
+struct inode *
+get_inode_from_path(char *pathname)
+{
+  ASSERT (pathname != NULL);
+  char *token, *next_token, *save_ptr;
+  struct dir *dir = NULL;
+  struct inode *inode = NULL;
+
+  if (strlen(pathname) == 0)
+    return NULL;
+
+  // determine relative versus absolute path.
+  if (pathname[0] == "/")
+    dir = dir_open_root();
+  else
+    dir = thread_current()->cwd;
+
+  // traverse and validate each directory in the pathname, up until
+  // the final directory_name/file_name token.
+  token = strtok_r (pathname, "/", &save_ptr);
+  while (token != NULL)
+  {
+    next_token = strtok_r (NULL, "/", &save_ptr);
+    // handle final directory_name/file_name token.
+    if (next_token == NULL)
+    {
+      if (dir == NULL)
+        PANIC("Invalid directory");
+      dir_lookup (dir, token, &inode);
+      dir_close (dir);
+      return inode;
+    }
+    // handle intermediate pathname tokens (should all be directories).
+    dir_lookup(dir, token, &inode);
+    dir_close(dir);
+    
+    if (inode->is_dir == false)
+      PANIC("Intermidate pathname is NOT a directory");
+    else
+    {
+      dir = dir_open(inode);
+      token = next_token;
+    }
+  }
+  return NULL;
 }
