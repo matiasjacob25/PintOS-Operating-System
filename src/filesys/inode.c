@@ -11,6 +11,9 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
+/* Max number of pointers that a single block can contain. */
+#define PTRS_PER_BLOCK 128
+
 /* Number of blocks stored in each type of indexed blocks. */
 #define DIRECT_SIZE 1
 #define INDIRECT_SIZE 128
@@ -33,7 +36,7 @@ struct inode_disk
     block_sector_t start;               /* First data sector. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    uint32_t unused[112];               /* Not used. */
 
     block_sector_t blocks[10];          /* Block pointers. */
     uint32_t direct_index;              /* Direct block index. */
@@ -67,6 +70,20 @@ struct inode
     uint32_t d_indirect_index;          /* Double indirect block index. */
   };
 
+/* define static functions */
+static bool 
+inode_free_db_indirect(struct inode *inode, uint32_t sectors_left);
+static bool 
+inode_free_indirect(struct inode *inode, uint32_t sectors_left);
+static bool
+inode_grow_db_indirect (struct inode *inode, uint32_t *sectors_left);
+static bool
+inode_grow_indirect(struct inode *inode, uint32_t *sectors_left);
+static bool 
+inode_grow (struct inode *inode, off_t length);
+static bool
+inode_alloc (struct inode_disk *disk_inode, off_t length);
+
 /* Returns the block device sector that contains byte offset POS
    within INODE.
    Returns -1 if INODE does not contain data for a byte at offset
@@ -75,8 +92,41 @@ static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
+  int sector, direct_index, indirect_index, d_indirect_index;
+  block_sector_t block_ptrs[PTRS_PER_BLOCK];
+
   if (pos < inode->data.length)
-    return inode->data.start + pos / BLOCK_SECTOR_SIZE;
+  {
+    // sector number exists within direct block pointers.
+    if (pos < DIRECT_PTRS * MAX_DIRECT_BYTE)
+    {
+      direct_index = pos / MAX_DIRECT_BYTE;
+      sector = inode->blocks[direct_index];
+    }
+
+    // sector number exists within indirect block pointers.
+    else if (pos < (DIRECT_PTRS * MAX_DIRECT_BYTE) + 
+            (INDIRECT_PTRS * MAX_INDIRECT_BYTE))
+    {
+      indirect_index = (pos - DIRECT_PTRS * MAX_DIRECT_BYTE) / 
+                       MAX_INDIRECT_BYTE;
+      block_read(fs_device, inode->blocks[DIRECT_PTRS], &block_ptrs);
+      sector = block_ptrs[indirect_index];
+    }
+
+    // TODO: finish implementation of d_indirect's byte_to_sector
+    // // sector number exists within double indirect block pointers.
+    // else 
+    // {
+    //   d_indirect_index = (pos - (DIRECT_PTRS * MAX_DIRECT_BYTE) -
+    //                      (INDIRECT_PTRS * MAX_INDIRECT_BYTE)) %
+    //                       MAX_INDIRECT_BYTE;
+    //   indirect_index = ()
+    //   indirect_index = (pos -(DIRECT_PTRS * MAX_DIRECT_BYTE) -
+    //                     (INDIRECT_PTRS * MAX_INDIRECT_BYTE)) %
+    //                     MAX_INDIRECT_BYTE;
+    // }
+  }
   else
     return -1;
 }
@@ -115,22 +165,15 @@ inode_create (block_sector_t sector, off_t length)
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
       size_t sectors = bytes_to_sectors (length);
-      // allocate enough sectors to store the inode's file data (length bytes)
+
+      // initialize length bytes worth of sectors using inode's block pointers,
+      // then store the updated disk_inode to disk at sector sector.
       if (inode_alloc(&disk_inode, length))
-      // if (free_map_allocate (sectors, &disk_inode->start)) 
-      //   {
-      //     block_write (fs_device, sector, disk_inode);
-      //     if (sectors > 0) 
-      //       {
-      //         static char zeros[BLOCK_SECTOR_SIZE];
-      //         size_t i;
-              
-      //         for (i = 0; i < sectors; i++) 
-      //           block_write (fs_device, disk_inode->start + i, zeros);
-      //       }
-      //     success = true; 
-      //   } 
-      free (disk_inode);
+      {
+        block_write (fs_device, sector, &disk_inode);
+        success = true;
+      }
+      free(disk_inode);
     }
   return success;
 }
@@ -206,11 +249,25 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
       if (inode->removed) 
         {
-          free_map_release (inode->sector, 1);
-          free_map_release (inode->data.start,
-                            bytes_to_sectors (inode->data.length)); 
-        }
+          uint32_t sectors_left = bytes_to_sectors(inode->length);
 
+          // deallocate sector containing inode metadata (struct fields).
+          free_map_release (inode->sector, 1);
+
+          // deallocate inode's direct block pointers.
+          for (int i = 0; i < inode->direct_index && sectors_left > 0; i++)
+            free_map_release(inode->blocks[i], 1);
+
+          if (sectors_left > 0)
+            // deallocate inode's indirect block pointers.
+            if (!inode_free_indirect(&inode, &sectors_left))
+              PANIC("Error deallocating indirect block pointers.");
+
+          if (sectors_left > 0)
+            // deallocate inode's double indirect block pointers. 
+            if (!inode_free_db_indirect(&inode, &sectors_left))
+              PANIC("Error deallocating double indirect block pointers.");
+        }
       free (inode); 
     }
 }
@@ -408,7 +465,7 @@ static bool inode_grow (struct inode *inode, off_t length) {
   uint32_t sectors_left = bytes_to_sectors(length) - 
                           bytes_to_sectors(inode->length);
   
-  // write data to inode's existing sectors.
+  // there is still room in existing sectors to write the new data.
   if (sectors_left == 0) 
   {
     return true;
@@ -434,8 +491,8 @@ static bool inode_grow (struct inode *inode, off_t length) {
     inode_grow_indirect(inode, &sectors_left);
 
   // Next, fill up empty indirect block ptrs (if necessary).
-  if (inode->d_indirect_index < DINDIRECT_PTRS && sectors_left > 0)
-    inode_grow_d_indirect(inode, &sectors_left);
+  if ( inode->d_indirect_index < DINDIRECT_SIZE && sectors_left > 0)
+    inode_grow_db_indirect(inode, &sectors_left);
 }
 
 // Allocates at most sectors_left sectors using inode inode's indirect block 
@@ -444,8 +501,7 @@ static bool inode_grow (struct inode *inode, off_t length) {
 static bool
 inode_grow_indirect(struct inode *inode, uint32_t *sectors_left) {
   static char zeros[BLOCK_SECTOR_SIZE];
-
-  block_sector_t indirect_blocks[INDIRECT_SIZE];
+  block_sector_t indirect_block[PTRS_PER_BLOCK];
 
   // should expect direct block ptrs to be full.
   ASSERT(inode->direct_index == DIRECT_PTRS);
@@ -458,14 +514,14 @@ inode_grow_indirect(struct inode *inode, uint32_t *sectors_left) {
       return false;
   }
   else
-    block_read(fs_device, inode->blocks[DIRECT_PTRS], &indirect_blocks);
+    block_read(fs_device, inode->blocks[DIRECT_PTRS], &indirect_block);
   
   // allocate the sectors for block pointers in the indirect block.
-  while (inode->indirect_index < INDIRECT_SIZE && *sectors_left > 0)
+  while (inode->indirect_index < PTRS_PER_BLOCK && *sectors_left > 0)
   {
-    if (free_map_allocate(1, indirect_blocks[inode->indirect_index]))
+    if (free_map_allocate(1, indirect_block[inode->indirect_index]))
       {
-        block_write(fs_device, indirect_blocks[inode->indirect_index], zeros);
+        block_write(fs_device, indirect_block[inode->indirect_index], zeros);
         inode->indirect_index++;
         *sectors_left--;
       }
@@ -474,7 +530,7 @@ inode_grow_indirect(struct inode *inode, uint32_t *sectors_left) {
   }
 
   // write updates made to indirect block's pointers back to disk.
-  block_write(fs_device, inode->blocks[DIRECT_PTRS], &indirect_blocks);
+  block_write(fs_device, inode->blocks[DIRECT_PTRS], &indirect_block);
   return true;
 }
 
@@ -484,11 +540,136 @@ inode_grow_indirect(struct inode *inode, uint32_t *sectors_left) {
 static bool
 inode_grow_db_indirect (struct inode *inode, uint32_t *sectors_left)
 {
+  static char zeros[BLOCK_SECTOR_SIZE];
+  block_sector_t d_indirect_block[PTRS_PER_BLOCK][PTRS_PER_BLOCK];
+  block_sector_t indirect_block[PTRS_PER_BLOCK];
+  uint32_t d_indirect_index;
+  uint32_t indirect_index;
+  
+  // should expect indirect block ptrs to be full.
+  ASSERT(inode->direct_index == INDIRECT_SIZE);
+
+  // allocate space to store double indirect block's pointers if it hasn't been 
+  // allocated yet. Otherwise, read the double indirect block from disk.
+  if (inode->d_indirect_index == 0)
+  {
+    if (!free_map_allocate(1, inode->blocks[DIRECT_PTRS + INDIRECT_PTRS]))
+      return false;
+  }
+  else
+    block_read(fs_device, inode->blocks[DIRECT_PTRS + INDIRECT_PTRS], 
+               &d_indirect_block);
+
+  while (inode->d_indirect_index < DINDIRECT_SIZE && *sectors_left > 0)
+  {
+    // allocate space for new indirect block if it hasn't been allocated yet.
+    // Otherwise, read the indirect block from disk.
+    int d_indirect_index = inode->d_indirect_index / PTRS_PER_BLOCK;
+    int indirect_index = inode->d_indirect_index % PTRS_PER_BLOCK;
+    if (indirect_index == 0)
+    {
+      if (!free_map_allocate(1, 
+      d_indirect_block[d_indirect_index][indirect_index]))
+        return false;
+    }
+    else
+      block_read(fs_device, d_indirect_block[d_indirect_index][indirect_index],
+                  &indirect_block);
+
+    while (indirect_index < PTRS_PER_BLOCK && *sectors_left > 0)
+    {
+      if (free_map_allocate(1, indirect_block[indirect_index]))
+      {
+        block_write(fs_device, indirect_block[indirect_index], zeros);
+        indirect_index++;
+        *sectors_left--;
+      }
+      else
+        return false;
+
+      // write updates made to indirect block's pointers back to disk.
+      // block_write(fs_device, inode->blocks[DIRECT_PTRS], &indirect_block);
+    }
+
+  // write updates made to double indirect block's pointers back to disk.
+  }
+
   return true;
 }
 
-static bool inode_create_indirect (...);
-static bool inode_create_db_indirect (...);
-static bool inode_free_indirect (...);
-static bool inode_free_db_indirect (...);
+/* Precondition: direct blocks have already been freed. */
+static bool 
+inode_free_indirect(struct inode *inode, uint32_t sectors_left)
+{
+  ASSERT(sectors_left > 0);
+  block_sector_t indirect_block[PTRS_PER_BLOCK];
+  uint32_t cur_indirect_index = 0;
+  bool success;
+
+  // load indirect block from disk.
+  block_read(fs_device, inode->blocks[DIRECT_PTRS], &indirect_block);
+
+  // release pointers in indirect block that are occupied in the free_map.
+  while (cur_indirect_index < inode->indirect_index && sectors_left > 0);
+  {
+    free_map_release(indirect_block[cur_indirect_index], 1);
+    cur_indirect_index++;
+    sectors_left--;
+  }
+
+  // release indirect block,
+  free_map_release(inode->blocks[DIRECT_PTRS], 1);
+  return true;
+}
+
+// TODO: finish implementation...
+/* Precondition: direct and indirect blocks have already been freed. */
+static bool 
+inode_free_db_indirect(struct inode *inode, uint32_t sectors_left)
+{
+  ASSERT(sectors_left > 0);
+
+  // block_sector_t d_indirect_block[PTRS_PER_BLOCK][PTRS_PER_BLOCK];
+  // block_sector_t indirect_block[PTRS_PER_BLOCK];
+  // uint32_t cur_d_indirect_index = 0;
+  // uint32_t cur_indirect_index = 0;
+  // bool success;
+
+  // // load double indirect block from disk.
+  // block_read(fs_device, inode->blocks[DIRECT_PTRS + INDIRECT_PTRS], 
+  //            &d_indirect_block);
+
+  // // release pointers in double indirect block that are occupied in the free_map.
+  // while (cur_d_indirect_index < inode->d_indirect_index && sectors_left > 0)
+  // {
+  //   // load indirect block from disk.
+  //   block_read(fs_device, d_indirect_block[cur_d_indirect_index][cur_indirect_index], 
+  //              &indirect_block);
+
+  //   while (cur_indirect_index < PTRS_PER_BLOCK && sectors_left > 0)
+  //   {
+  //     if (free_map_release(indirect_block[cur_indirect_index], 1))
+  //     {
+  //       cur_indirect_index++;
+  //       sectors_left--;
+  //     }
+  //     else
+  //       return false;
+  //   }
+
+  //   // release indirect block,
+  //   if (!free_map_release(d_indirect_block[cur_d_indirect_index][cur_indirect_index], 1))
+  //     return false;
+  //   cur_d_indirect_index++;
+  // }
+
+  // // release double indirect block,
+  // if (!free_map_release(inode->blocks[DIRECT_PTRS + INDIRECT_PTRS], 1))
+  //   return false;
+  // return true;
+}
+
+
+// static bool inode_create_indirect (...);
+// static bool inode_create_db_indirect (...);
 
