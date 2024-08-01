@@ -63,24 +63,19 @@ struct inode
     struct inode_disk data;             /* Inode content. */
 
     struct lock lock;                   /* Inode lock. */
-    off_t length;                       /* File size in bytes. */
-    block_sector_t blocks[10];          /* Block pointers. */
-    uint32_t direct_index;              /* Direct block index. */
-    uint32_t indirect_index;            /* Indirect block index. */
-    uint32_t d_indirect_index;          /* Double indirect block index. */
   };
 
 /* define static functions */
 static bool 
-inode_free_db_indirect(struct inode *inode, uint32_t sectors_left);
+inode_free_db_indirect(struct inode_disk *disk_inode, uint32_t sectors_left);
 static bool 
-inode_free_indirect(struct inode *inode, uint32_t sectors_left);
+inode_free_indirect(struct inode_disk *disk_inode, uint32_t sectors_left);
 static bool
-inode_grow_db_indirect (struct inode *inode, uint32_t *sectors_left);
+inode_grow_db_indirect (struct inode_disk *disk_inode, uint32_t *sectors_left);
 static bool
-inode_grow_indirect(struct inode *inode, uint32_t *sectors_left);
+inode_grow_indirect(struct inode_disk *disk_inode, uint32_t *sectors_left);
 static bool 
-inode_grow (struct inode *inode, off_t length);
+inode_grow (struct inode_disk *disk_inode, off_t length);
 static bool
 inode_alloc (struct inode_disk *disk_inode, off_t length);
 // static bool inode_create_indirect (...);
@@ -96,14 +91,15 @@ byte_to_sector (const struct inode *inode, off_t pos)
   ASSERT (inode != NULL);
   int sector, direct_index, indirect_index, d_indirect_index;
   block_sector_t block_ptrs[PTRS_PER_BLOCK];
+  struct inode_disk *disk_inode = &inode->data;
 
-  if (pos < inode->data.length)
+  if (pos < disk_inode->length)
   {
     // sector number exists within direct block pointers.
     if (pos < DIRECT_PTRS * MAX_DIRECT_BYTE)
     {
       direct_index = pos / MAX_DIRECT_BYTE;
-      sector = inode->blocks[direct_index];
+      sector = disk_inode->blocks[direct_index];
     }
 
     // sector number exists within indirect block pointers.
@@ -112,7 +108,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
     {
       indirect_index = (pos - DIRECT_PTRS * MAX_DIRECT_BYTE) / 
                        MAX_DIRECT_BYTE;
-      block_read(fs_device, inode->blocks[DIRECT_PTRS], &block_ptrs);
+      block_read(fs_device, disk_inode->blocks[DIRECT_PTRS], &block_ptrs);
       sector = block_ptrs[indirect_index];
     }
 
@@ -166,11 +162,14 @@ inode_create (block_sector_t sector, off_t length)
     {
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
+      disk_inode->direct_index = 0;
+      disk_inode->indirect_index = 0;
+      disk_inode->d_indirect_index = 0;
       size_t sectors = bytes_to_sectors (length);
 
       // initialize length bytes worth of sectors using inode's block pointers,
       // then store the updated disk_inode to disk at sector sector.
-      if (inode_alloc(disk_inode, length))
+      if (inode_grow(disk_inode, length))
       {
         block_write (fs_device, sector, disk_inode);
         success = true;
@@ -212,16 +211,7 @@ inode_open (block_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-
-  // update fields shared by disk_inode and inode.
   block_read (fs_device, inode->sector, &inode->data);
-  struct inode_disk *disk_inode = &inode->data;
-  inode->length = disk_inode->length;
-  inode->direct_index = disk_inode->direct_index;
-  inode->indirect_index = disk_inode->indirect_index;
-  inode->d_indirect_index = disk_inode->d_indirect_index;
-  memcpy(&inode->blocks, &disk_inode->blocks, 
-  (DIRECT_PTRS + INDIRECT_PTRS + DINDIRECT_PTRS) * sizeof(block_sector_t));
   return inode;
 }
 
@@ -260,23 +250,25 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
       if (inode->removed) 
         {
-          uint32_t sectors_left = bytes_to_sectors(inode->length);
+          struct inode_disk *disk_inode = &inode->data;
+          uint32_t sectors_left = bytes_to_sectors(disk_inode->length);
 
           // deallocate sector containing inode metadata (struct fields).
           free_map_release (inode->sector, 1);
 
           // deallocate inode's direct block pointers.
-          for (int i = 0; i < inode->direct_index && sectors_left > 0; i++)
-            free_map_release(inode->blocks[i], 1);
+          for (int i = 0; i < 
+            disk_inode->direct_index && sectors_left > 0; i++)
+            free_map_release(disk_inode->blocks[i], 1);
 
           if (sectors_left > 0)
             // deallocate inode's indirect block pointers.
-            if (!inode_free_indirect(&inode, &sectors_left))
+            if (!inode_free_indirect(&disk_inode, &sectors_left))
               PANIC("Error deallocating indirect block pointers.");
 
           if (sectors_left > 0)
             // deallocate inode's double indirect block pointers. 
-            if (!inode_free_db_indirect(&inode, &sectors_left))
+            if (!inode_free_db_indirect(&disk_inode, &sectors_left))
               PANIC("Error deallocating double indirect block pointers.");
         }
       free (inode); 
@@ -442,41 +434,10 @@ inode_length (const struct inode *inode)
   return inode->data.length;
 }
 
-// Allocates length bytes worth of sectors for a new inode with disk 
-// inode disk_inode. Returns true if sectors are allocated successfully. 
-// Otherwise returns false.
-static bool
-inode_alloc (struct inode_disk *disk_inode, off_t length)
-{
-  bool success = false;
-
-  // run inode_grow on newly initialzied inode so that we only update
-  // disk_inode's block pointers if inode_grow is successful.
-  struct inode inode;
-  inode.length = 0;
-  inode.direct_index = 0;
-  inode.indirect_index = 0;
-  inode.d_indirect_index = 0;
-
-  if (inode_grow(&inode, length))
-  {
-    disk_inode->direct_index = inode.direct_index;
-    disk_inode->indirect_index = inode.indirect_index;
-    disk_inode->d_indirect_index = inode.d_indirect_index;
-    memcpy(&disk_inode->blocks, 
-          &inode.blocks, 
-          (DIRECT_PTRS + INDIRECT_PTRS + DINDIRECT_PTRS) * 
-          sizeof(block_sector_t));
-    success = true;
-  }
-
-  return success;
-}
-
 // Allocates length bytes worth of sectors for inode inode and updates inodes
 // block pointers accordingly. Returns true if allocated succesfully.
 // Otherwise, returns false. 
-static bool inode_grow (struct inode *inode, off_t length) {
+static bool inode_grow (struct inode_disk *disk_inode, off_t length) {
   static char zeros[BLOCK_SECTOR_SIZE];
   // only want to allocate new sectors for data that's extending the inode's 
   // previous length.
@@ -490,12 +451,13 @@ static bool inode_grow (struct inode *inode, off_t length) {
 
   // Allocate new zeroed sectors for new inode data.
   // First, fill up empty direct block ptrs first. 
-  while (inode->direct_index < DIRECT_PTRS && sectors_left > 0) 
+  while (disk_inode->direct_index < DIRECT_PTRS && sectors_left > 0) 
   {
-    if (free_map_allocate(1, &inode->blocks[inode->direct_index]))
+    if (free_map_allocate(1, &disk_inode->blocks[disk_inode->direct_index]))
     {
-      block_write(fs_device, inode->blocks[inode->direct_index], zeros);
-      inode->direct_index++;
+      block_write(fs_device, 
+        disk_inode->blocks[disk_inode->direct_index], zeros);
+      disk_inode->direct_index++;
       sectors_left--;
     }
     else
@@ -504,12 +466,12 @@ static bool inode_grow (struct inode *inode, off_t length) {
 
   // Next, fill up empty indirect block ptrs (if necessary).
   // while (inode->indirect_index < INDIRECT_PTRS && sectors_left > 0)
-  if (inode->indirect_index < INDIRECT_PTRS && sectors_left > 0)
-    inode_grow_indirect(inode, &sectors_left);
+  if (disk_inode->indirect_index < INDIRECT_PTRS && sectors_left > 0)
+    inode_grow_indirect(disk_inode, &sectors_left);
 
   // Next, fill up empty indirect block ptrs (if necessary).
-  if ( inode->d_indirect_index < DINDIRECT_SIZE && sectors_left > 0)
-    inode_grow_db_indirect(inode, &sectors_left);
+  if (disk_inode->d_indirect_index < DINDIRECT_SIZE && sectors_left > 0)
+    inode_grow_db_indirect(disk_inode, &sectors_left);
   
   return true;
 }
@@ -518,30 +480,31 @@ static bool inode_grow (struct inode *inode, off_t length) {
 // pointers. Returns true if memory allocation is successful. Otherwise returns
 // false. 
 static bool
-inode_grow_indirect(struct inode *inode, uint32_t *sectors_left) {
+inode_grow_indirect(struct inode_disk *disk_inode, uint32_t *sectors_left) {
   static char zeros[BLOCK_SECTOR_SIZE];
   block_sector_t indirect_block[PTRS_PER_BLOCK];
 
   // should expect direct block ptrs to be full.
-  ASSERT(inode->direct_index == DIRECT_PTRS);
+  ASSERT(disk_inode->direct_index == DIRECT_PTRS);
 
   // allocate space to store indirect block's pointers if it hasn't been 
   // allocated yet. Otherwise, read in the indirect blocks from disk.
-  if (inode->indirect_index == 0)
+  if (disk_inode->indirect_index == 0)
   {
-    if (!free_map_allocate(1, &inode->blocks[DIRECT_PTRS]))
+    if (!free_map_allocate(1, &disk_inode->blocks[DIRECT_PTRS]))
       return false;
   }
   else
-    block_read(fs_device, &inode->blocks[DIRECT_PTRS], &indirect_block);
+    block_read(fs_device, &disk_inode->blocks[DIRECT_PTRS], &indirect_block);
   
   // allocate the sectors for block pointers in the indirect block.
-  while (inode->indirect_index < PTRS_PER_BLOCK && *sectors_left > 0)
+  while (disk_inode->indirect_index < PTRS_PER_BLOCK && *sectors_left > 0)
   {
-    if (free_map_allocate(1, &indirect_block[inode->indirect_index]))
+    if (free_map_allocate(1, &indirect_block[disk_inode->indirect_index]))
     {
-      block_write(fs_device, indirect_block[inode->indirect_index], zeros);
-      inode->indirect_index++;
+      block_write(fs_device, 
+        indirect_block[disk_inode->indirect_index], zeros);
+      disk_inode->indirect_index++;
       *sectors_left = *sectors_left - 1;
     }
     else
@@ -549,15 +512,16 @@ inode_grow_indirect(struct inode *inode, uint32_t *sectors_left) {
   }
 
   // write updates made to indirect block's pointers back to disk.
-  block_write(fs_device, inode->blocks[DIRECT_PTRS], &indirect_block);
+  block_write(fs_device, disk_inode->blocks[DIRECT_PTRS], &indirect_block);
   return true;
 }
 
+//TODO: finish implementation...
 // Allocates at most sectors_left sectors using inode inode's doubly indirect
 // block pointers. Returns true if memory allocation is successful. Otherwise 
 // returns false.
 static bool
-inode_grow_db_indirect (struct inode *inode, uint32_t *sectors_left)
+inode_grow_db_indirect (struct inode_disk *disk_inode, uint32_t *sectors_left)
 {
   static char zeros[BLOCK_SECTOR_SIZE];
   block_sector_t d_indirect_block[PTRS_PER_BLOCK][PTRS_PER_BLOCK];
@@ -566,25 +530,26 @@ inode_grow_db_indirect (struct inode *inode, uint32_t *sectors_left)
   uint32_t indirect_index;
   
   // should expect indirect block ptrs to be full.
-  ASSERT(inode->direct_index == INDIRECT_SIZE);
+  ASSERT(disk_inode->direct_index == INDIRECT_SIZE);
 
   // allocate space to store double indirect block's pointers if it hasn't been 
   // allocated yet. Otherwise, read the double indirect block from disk.
-  if (inode->d_indirect_index == 0)
+  if (disk_inode->d_indirect_index == 0)
   {
-    if (!free_map_allocate(1, &inode->blocks[DIRECT_PTRS + INDIRECT_PTRS]))
+    if (!free_map_allocate(1, 
+      &disk_inode->blocks[DIRECT_PTRS + INDIRECT_PTRS]))
       return false;
   }
   else
-    block_read(fs_device, inode->blocks[DIRECT_PTRS + INDIRECT_PTRS], 
+    block_read(fs_device, disk_inode->blocks[DIRECT_PTRS + INDIRECT_PTRS], 
                &d_indirect_block);
 
-  while (inode->d_indirect_index < DINDIRECT_SIZE && *sectors_left > 0)
+  while (disk_inode->d_indirect_index < DINDIRECT_SIZE && *sectors_left > 0)
   {
     // allocate space for new indirect block if it hasn't been allocated yet.
     // Otherwise, read the indirect block from disk.
-    int d_indirect_index = inode->d_indirect_index / PTRS_PER_BLOCK;
-    int indirect_index = inode->d_indirect_index % PTRS_PER_BLOCK;
+    int d_indirect_index = disk_inode->d_indirect_index / PTRS_PER_BLOCK;
+    int indirect_index = disk_inode->d_indirect_index % PTRS_PER_BLOCK;
     if (indirect_index == 0)
     {
       if (!free_map_allocate(1, 
@@ -618,7 +583,7 @@ inode_grow_db_indirect (struct inode *inode, uint32_t *sectors_left)
 
 /* Precondition: direct blocks have already been freed. */
 static bool 
-inode_free_indirect(struct inode *inode, uint32_t sectors_left)
+inode_free_indirect(struct inode_disk *disk_inode, uint32_t sectors_left)
 {
   ASSERT(sectors_left > 0);
   block_sector_t indirect_block[PTRS_PER_BLOCK];
@@ -626,10 +591,10 @@ inode_free_indirect(struct inode *inode, uint32_t sectors_left)
   bool success;
 
   // load indirect block from disk.
-  block_read(fs_device, inode->blocks[DIRECT_PTRS], &indirect_block);
+  block_read(fs_device, disk_inode->blocks[DIRECT_PTRS], &indirect_block);
 
   // release pointers in indirect block that are occupied in the free_map.
-  while (cur_indirect_index < inode->indirect_index && sectors_left > 0);
+  while (cur_indirect_index < disk_inode->indirect_index && sectors_left > 0);
   {
     free_map_release(indirect_block[cur_indirect_index], 1);
     cur_indirect_index++;
@@ -637,14 +602,14 @@ inode_free_indirect(struct inode *inode, uint32_t sectors_left)
   }
 
   // release indirect block,
-  free_map_release(inode->blocks[DIRECT_PTRS], 1);
+  free_map_release(disk_inode->blocks[DIRECT_PTRS], 1);
   return true;
 }
 
-// TODO: finish implementation...
+// TODO: finish implementation... (re-factor using disk_inode)
 /* Precondition: direct and indirect blocks have already been freed. */
 static bool 
-inode_free_db_indirect(struct inode *inode, uint32_t sectors_left)
+inode_free_db_indirect(struct inode_disk *disk_inode, uint32_t sectors_left)
 {
   ASSERT(sectors_left > 0);
 
