@@ -9,6 +9,7 @@
 #include <string.h>
 #include "filesys/directory.h"
 #include "filesys/inode.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -58,7 +59,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(*(esp+1));
 
         lock_acquire(&filesys_lock);
-        f->eax = filesys_create(*(esp+1), *(esp+2), false);
+        f->eax = filesys_create(*(esp+1), *(esp+2), true, false);
         lock_release(&filesys_lock);
         break;
 
@@ -208,7 +209,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(esp+1);
         validate_addr(*(esp+1));
         
-        dir = dir_open(get_inode_from_path(*(esp+1)));
+        dir = dir_open(get_inode_from_path(*(esp+1), false, false, 0));
         if (dir != NULL)
         {
           // close current working directory open new directory.
@@ -223,7 +224,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_MKDIR:
         validate_addr(esp+1);
         validate_addr(*(esp+1));
-        f->eax = filesys_create(*(esp+1), 0, true);
+        f->eax = filesys_create(*(esp+1), 0, true, true);
         break;
 
       case SYS_READDIR:

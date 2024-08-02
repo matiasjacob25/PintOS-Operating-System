@@ -7,6 +7,7 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 #include "threads/thread.h"
+#include "threads/malloc.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -44,10 +45,10 @@ filesys_done (void)
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size, bool is_dir) 
+filesys_create (const char *name, off_t initial_size, bool create, bool is_dir) 
 {
   struct inode *new_inode = get_inode_from_path(name, 
-                                                true, 
+                                                create, 
                                                 is_dir, 
                                                 initial_size);
   return new_inode != NULL;
@@ -72,7 +73,6 @@ struct file *
 filesys_open (const char *name)
 {
   struct inode *inode = get_inode_from_path(name, false, false, 0);
-  struct inode * get_inode_from_path(char *, bool, bool, off_t);
   return file_open (inode);
 }
 
@@ -107,20 +107,24 @@ do_format (void)
 Returns NULL if the inode for the last token in PATHNAME does not exist.
 Note that the returned inode may correspond to a file OR a directory. */
 struct inode *
-get_inode_from_path(char *pathname, bool create, 
+get_inode_from_path(char *name, bool create, 
 bool is_dir, off_t initial_size)
 {
-  ASSERT (pathname != NULL);
-  char *token, *next_token, *save_ptr;
+  ASSERT (name != NULL);
   struct dir *dir = NULL;
+
   struct inode *inode = NULL;
+  char *next_token, *save_ptr;
+  char *token = malloc(NAME_MAX+1);
+  char *pathname = malloc(strlen(name)+1);
+  strlcpy(pathname, name, strlen(name)+1);
 
   if (strlen(pathname) == 0)
-    return NULL;
+    goto done;
 
   // initialize the thread's cwd on first call
   if (thread_current()->cwd == NULL)
-      thread_current()->cwd = dir_open_root();
+    thread_current()->cwd = dir_open_root();
 
   // determine relative versus absolute path.
   if (pathname[0] == "/")
@@ -130,12 +134,14 @@ bool is_dir, off_t initial_size)
 
   // traverse and validate each directory in the pathname, up until
   // the final directory_name/file_name token.
-  token = strtok_r (pathname, "/", &save_ptr);
+  next_token = strtok_r (pathname, "/", &save_ptr);
+  ASSERT(strlen(next_token) < NAME_MAX);
+  strlcpy(token, next_token, strlen(next_token)+1);
   while (token != NULL)
   {
     // validate new dir val.
     if (dir == NULL)
-        PANIC("Invalid directory");
+      PANIC("Invalid directory");
     next_token = strtok_r (NULL, "/", &save_ptr);
     
     // case: add last token in pathname as a new dir/file inode
@@ -153,8 +159,7 @@ bool is_dir, off_t initial_size)
         if (!success && inode_sector != 0) 
           free_map_release (inode_sector, 1);
         dir_lookup(dir, token, &inode);
-        dir_close (dir);
-        return inode;
+        goto done;
       }
     }
     // case: return inode of last token in pathname for sys_chdir.
@@ -162,7 +167,7 @@ bool is_dir, off_t initial_size)
     {
       dir_lookup (dir, token, &inode);
       dir_close (dir);
-      return inode;
+      goto done;
     }
     
     // handle intermediate pathname tokens (should all be directories).
@@ -173,8 +178,12 @@ bool is_dir, off_t initial_size)
     else
     {
       dir = dir_open(inode);
-      token = next_token;
+      ASSERT(strlen(next_token) < NAME_MAX);
+      strlcpy(token, next_token, strlen(next_token)+1);
     }
   }
-  return NULL;
+  done:
+    free(pathname);
+    free(token);
+    return inode;
 }
