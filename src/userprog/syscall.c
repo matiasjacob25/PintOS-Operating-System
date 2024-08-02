@@ -7,6 +7,8 @@
 #include "userprog/syscall.h"
 #include "filesys/file.h"
 #include <string.h>
+#include "filesys/directory.h"
+#include "filesys/inode.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -23,6 +25,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   int *esp = validate_addr(f->esp);
   unsigned syscall_number = *esp;
   struct file *file = NULL;
+  struct dir *dir = NULL;
   int fd;
 
   switch (syscall_number)
@@ -55,7 +58,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(*(esp+1));
 
         lock_acquire(&filesys_lock);
-        f->eax = filesys_create(*(esp+1), *(esp+2));
+        f->eax = filesys_create(*(esp+1), *(esp+2), false);
         lock_release(&filesys_lock);
         break;
 
@@ -204,10 +207,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_CHDIR:
         validate_addr(esp+1);
         validate_addr(*(esp+1));
-
-        struct dir *dir = NULL;
+        
         dir = dir_open(get_inode_from_path(*(esp+1)));
-
         if (dir != NULL)
         {
           // close current working directory open new directory.
@@ -220,10 +221,49 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       
       case SYS_MKDIR:
+        validate_addr(esp+1);
+        validate_addr(*(esp+1));
+        f->eax = filesys_create(*(esp+1), 0, true);
+        break;
 
       case SYS_READDIR:
+        validate_addr(esp+1);
+        validate_addr(esp+2);
+        validate_addr(*(esp+2));
+
+        file = get_open_file(*(esp+1));
+        if (file != NULL && file->inode->data.is_dir)
+        {
+          dir = dir_open(file->inode);
+          if (dir != NULL)
+          {
+            f->eax = dir_readdir(dir, *(esp+2));
+            break;
+          }
+        }
+        f->eax = false; 
+        break;
+
       case SYS_ISDIR:
+        validate_addr(esp+1);
+
+        file = get_open_file(*(esp+1));
+        if (file != NULL)
+          f->eax = file->inode->data.is_dir;
+        else
+          handle_sys_exit(-1);
+        break;
+         
       case SYS_INUMBER:
+        validate_addr(esp+1);
+
+        file = get_open_file(*(esp+1));
+        if (file != NULL)
+          f->eax = file->inode->sector;
+        else
+          handle_sys_exit(-1);
+        break;
+      
       default:
         NOT_REACHED();
     }

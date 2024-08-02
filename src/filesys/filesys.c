@@ -44,19 +44,23 @@ filesys_done (void)
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size) 
+filesys_create (const char *name, off_t initial_size, bool is_dir) 
 {
-  block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
-  bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
-                  && dir_add (dir, name, inode_sector));
-  if (!success && inode_sector != 0) 
-    free_map_release (inode_sector, 1);
-  dir_close (dir);
-
-  return success;
+  struct inode *new_inode = get_inode_from_path(name, 
+                                                true, 
+                                                is_dir, 
+                                                initial_size);
+  return new_inode != NULL;
+  // block_sector_t inode_sector = 0;
+  // struct dir *dir = dir_open_root ();
+  // bool success = (dir != NULL
+  //                 && free_map_allocate (1, &inode_sector)
+  //                 && inode_create (inode_sector, initial_size, is_dir)
+  //                 && dir_add (dir, name, inode_sector));
+  // if (!success && inode_sector != 0) 
+  //   free_map_release (inode_sector, 1);
+  // dir_close (dir);
+  // return success;
 }
 
 /* Opens the file with the given NAME.
@@ -67,7 +71,8 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
-  struct inode *inode = get_inode_from_path(name);
+  struct inode *inode = get_inode_from_path(name, false, false, 0);
+  struct inode * get_inode_from_path(char *, bool, bool, off_t);
   return file_open (inode);
 }
 
@@ -102,7 +107,8 @@ do_format (void)
 Returns NULL if the inode for the last token in PATHNAME does not exist.
 Note that the returned inode may correspond to a file OR a directory. */
 struct inode *
-get_inode_from_path(char *pathname)
+get_inode_from_path(char *pathname, bool create, 
+bool is_dir, off_t initial_size)
 {
   ASSERT (pathname != NULL);
   char *token, *next_token, *save_ptr;
@@ -112,10 +118,14 @@ get_inode_from_path(char *pathname)
   if (strlen(pathname) == 0)
     return NULL;
 
+  // initialize the thread's cwd on first call
+  if (thread_current()->cwd == NULL)
+      thread_current()->cwd = dir_open_root();
+
   // determine relative versus absolute path.
   if (pathname[0] == "/")
     dir = dir_open_root();
-  else
+  else 
     dir = thread_current()->cwd;
 
   // traverse and validate each directory in the pathname, up until
@@ -123,22 +133,43 @@ get_inode_from_path(char *pathname)
   token = strtok_r (pathname, "/", &save_ptr);
   while (token != NULL)
   {
-    next_token = strtok_r (NULL, "/", &save_ptr);
-    // handle final directory_name/file_name token.
-    if (next_token == NULL)
-    {
-      if (dir == NULL)
+    // validate new dir val.
+    if (dir == NULL)
         PANIC("Invalid directory");
+    next_token = strtok_r (NULL, "/", &save_ptr);
+    
+    // case: add last token in pathname as a new dir/file inode
+    if (next_token == NULL && create)
+    {
+      // proceed with creation ONLY IF dir/file doesn't already exist
+      dir_lookup (dir, token, &inode);
+      if (inode == NULL)
+      {
+        block_sector_t inode_sector = 0;
+        bool success = (dir != NULL
+                        && free_map_allocate (1, &inode_sector)
+                        && inode_create (inode_sector, initial_size, is_dir)
+                        && dir_add (dir, token, inode_sector));
+        if (!success && inode_sector != 0) 
+          free_map_release (inode_sector, 1);
+        dir_lookup(dir, token, &inode);
+        dir_close (dir);
+        return inode;
+      }
+    }
+    // case: return inode of last token in pathname for sys_chdir.
+    else if (next_token == NULL && !create)
+    {
       dir_lookup (dir, token, &inode);
       dir_close (dir);
       return inode;
     }
+    
     // handle intermediate pathname tokens (should all be directories).
     dir_lookup(dir, token, &inode);
     dir_close(dir);
-    
-    if (!inode->is_dir)
-      PANIC("Intermidate pathname is NOT a directory");
+    if (!(inode->data.is_dir))
+      PANIC("Intermediate pathname is NOT a directory");
     else
     {
       dir = dir_open(inode);

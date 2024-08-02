@@ -14,12 +14,15 @@ struct inode_disk
   block_sector_t start;               /* First data sector. */
   off_t length;                       /* File size in bytes. */
   unsigned magic;                     /* Magic number. */
-  uint32_t unused[112];               /* Not used. */
+  uint32_t unused[111];               /* Not used. */
 
   block_sector_t blocks[10];          /* Block pointers. */
   uint32_t direct_index;              /* Direct block index. */
   uint32_t indirect_index;            /* Indirect block index. */
   uint32_t d_indirect_index;          /* Double indirect block index. */
+  // is_dir is to be used later to prevent writing to inodes that are 
+  // directories instead of actual files. 
+  bool is_dir;                     /* Whether or not inode is a directory. */
 };
 
 /* In-memory inode. */
@@ -33,15 +36,12 @@ struct inode
   struct inode_disk data;          /* Inode content. */
 
   struct lock lock;                /* Inode lock. */
-  // is_dir is to be used later to prevent writing to inodes that are 
-  // directories instead of actual files. 
-  bool is_dir;                     /* Whether or not inode is a directory. */
 };
 
 struct bitmap;
 
 void inode_init (void);
-bool inode_create (block_sector_t, off_t);
+bool inode_create (block_sector_t, off_t, bool);
 struct inode *inode_open (block_sector_t);
 struct inode *inode_reopen (struct inode *);
 block_sector_t inode_get_inumber (const struct inode *);
