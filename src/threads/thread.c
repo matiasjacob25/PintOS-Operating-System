@@ -98,6 +98,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->cwd = NULL;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -483,7 +484,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->fdt);
   t->next_fd = 2;
   t->exec_file = NULL;
-  t->cwd = NULL;
+  t->cwd = running_thread()->cwd;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

@@ -52,16 +52,6 @@ filesys_create (const char *name, off_t initial_size, bool create, bool is_dir)
                                                 is_dir, 
                                                 initial_size);
   return new_inode != NULL;
-  // block_sector_t inode_sector = 0;
-  // struct dir *dir = dir_open_root ();
-  // bool success = (dir != NULL
-  //                 && free_map_allocate (1, &inode_sector)
-  //                 && inode_create (inode_sector, initial_size, is_dir)
-  //                 && dir_add (dir, name, inode_sector));
-  // if (!success && inode_sector != 0) 
-  //   free_map_release (inode_sector, 1);
-  // dir_close (dir);
-  // return success;
 }
 
 /* Opens the file with the given NAME.
@@ -102,7 +92,6 @@ do_format (void)
   printf ("done.\n");
 }
 
-// TODO: add handling for special cases like ".." and "."
 /* Returns a pointer to the inode of the last token in PATHNAME. 
 Returns NULL if the inode for the last token in PATHNAME does not exist.
 Note that the returned inode may correspond to a file OR a directory. */
@@ -142,7 +131,10 @@ bool is_dir, off_t initial_size)
   {
     // validate new dir val.
     if (dir == NULL)
-      PANIC("Invalid directory");
+    {
+      inode = NULL;
+      goto done;
+    }
     next_token = strtok_r (NULL, "/", &save_ptr);
     
     // case: add last token in pathname as a new dir/file inode
@@ -153,19 +145,18 @@ bool is_dir, off_t initial_size)
       if (inode == NULL)
       {
         block_sector_t inode_sector = 0;
-        //testing
-        bool temp0 = dir != NULL;
-        bool temp1 = free_map_allocate (1, &inode_sector);
-        bool temp2 = inode_create (inode_sector, initial_size, is_dir);
-        bool temp3 = dir_add (dir, token, inode_sector);
-        bool success = temp0 && temp1 && temp2 && temp3;
-        // bool success = (dir != NULL
-        //                 && free_map_allocate (1, &inode_sector)
-        //                 && inode_create (inode_sector, initial_size, is_dir)
-        //                 && dir_add (dir, token, inode_sector));
+        bool success = (dir != NULL
+                        && free_map_allocate (1, &inode_sector)
+                        && inode_create (inode_sector, initial_size, is_dir)
+                        && dir_add (dir, token, inode_sector));
         if (!success && inode_sector != 0) 
           free_map_release (inode_sector, 1);
         dir_lookup(dir, token, &inode);
+        goto done;
+      }
+      else
+      {
+        inode = NULL;
         goto done;
       }
     }
