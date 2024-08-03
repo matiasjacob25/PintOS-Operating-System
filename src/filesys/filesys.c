@@ -135,7 +135,8 @@ bool is_dir, off_t initial_size)
   // traverse and validate each directory in the pathname, up until
   // the final directory_name/file_name token.
   next_token = strtok_r (pathname, "/", &save_ptr);
-  ASSERT(strlen(next_token) < NAME_MAX);
+  if (strlen(next_token) > NAME_MAX)
+    goto done;
   strlcpy(token, next_token, strlen(next_token)+1);
   while (token != NULL)
   {
@@ -166,7 +167,6 @@ bool is_dir, off_t initial_size)
     else if (next_token == NULL && !create)
     {
       dir_lookup (dir, token, &inode);
-      dir_close (dir);
       goto done;
     }
     
@@ -178,7 +178,8 @@ bool is_dir, off_t initial_size)
     else
     {
       dir = dir_open(inode);
-      ASSERT(strlen(next_token) < NAME_MAX);
+      if (strlen(next_token) > NAME_MAX)
+        goto done;
       strlcpy(token, next_token, strlen(next_token)+1);
     }
   }
