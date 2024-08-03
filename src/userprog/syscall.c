@@ -16,7 +16,7 @@ static void syscall_handler (struct intr_frame *);
 void
 syscall_init (void) 
 {
-  lock_init(&filesys_lock);
+  // lock_init(&filesys_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -58,9 +58,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         // ensure value that file pointer points to is a valid address
         validate_addr(*(esp+1));
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         f->eax = filesys_create(*(esp+1), *(esp+2), true, false);
-        lock_release(&filesys_lock);
+        // lock_release(&filesys_lock);
         break;
 
       case SYS_REMOVE:
@@ -68,9 +68,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         // ensure value that file pointer points to is a valid address
         validate_addr(*(esp+1));
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         f->eax = filesys_remove(*(esp+1));
-        lock_release(&filesys_lock);
+        // lock_release(&filesys_lock);
         break; 
 
       case SYS_OPEN:
@@ -78,7 +78,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         // ensure value that file pointer points to is a valid address
         validate_addr(*(esp+1));
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         file = filesys_open(*(esp+1));
 
         if (file == NULL)
@@ -86,7 +86,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         else
           // add opened file to thread's fdt
           f->eax = fdt_push(file);
-        lock_release(&filesys_lock);
+        // lock_release(&filesys_lock);
         break;
 
       case SYS_FILESIZE:
@@ -94,17 +94,17 @@ syscall_handler (struct intr_frame *f UNUSED)
         fd = *(esp+1);
         ASSERT (fd != 0 && fd != 1);
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         file = get_open_file(*(esp+1));
           
         if (file != NULL)
           {
             f->eax = file_length(file);
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
           }
         else
           {
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
             handle_sys_exit(-1);
           }
         break; 
@@ -116,9 +116,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         // ensure value that buffer pointer points to is a valid address
         validate_addr(*(esp+2));
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         f->eax = handle_sys_read(*(esp+1), *(esp+2), *(esp+3));
-        lock_release(&filesys_lock);
+        // lock_release(&filesys_lock);
         break; 
 
       case SYS_WRITE:  
@@ -128,26 +128,26 @@ syscall_handler (struct intr_frame *f UNUSED)
         // ensure value that buffer pointer points to is a valid address
         validate_addr(*(esp+2));
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         f->eax = handle_sys_write(*(esp+1), *(esp+2), *(esp+3));
-        lock_release(&filesys_lock);
+        // lock_release(&filesys_lock);
         break; 
 
       case SYS_SEEK:
         validate_addr(esp+1);
         validate_addr(esp+2);
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         file = get_open_file(*(esp+1));
 
         if (file != NULL)
           {
             file_seek(file, *(esp+2));
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
           }
         else
           {
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
             handle_sys_exit(-1);
           }
         break; 
@@ -155,17 +155,17 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_TELL:
         validate_addr(esp+1);
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         file = get_open_file(*(esp+1));
         
         if (file != NULL)
           {
             f->eax = file_tell(file);
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
           }
         else
           {
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
             handle_sys_exit(-1);
           }
         break; 
@@ -174,7 +174,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         validate_addr(esp+1);
         fd = *(esp+1);
 
-        lock_acquire(&filesys_lock);
+        // lock_acquire(&filesys_lock);
         file = get_open_file(fd);
 
         if (file != NULL)
@@ -196,11 +196,11 @@ syscall_handler (struct intr_frame *f UNUSED)
                   }
                 e = list_next(e);
               } 
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
           }
         else
           {
-            lock_release(&filesys_lock);
+            // lock_release(&filesys_lock);
             handle_sys_exit(-1);
           }
         break; 
@@ -323,7 +323,11 @@ handle_sys_read(int fd, char *buf_addr, unsigned size)
     {
       struct file *file = get_open_file(fd);
       if (file != NULL)
+      {
+        lock_acquire(&file->inode->lock);
         bytes_read = file_read(file, buf_addr, size);
+        lock_release(&file->inode->lock);
+      }
       else
         bytes_read = -1;
     }

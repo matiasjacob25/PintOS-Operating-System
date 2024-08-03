@@ -12,8 +12,8 @@ struct thread_file
   struct list_elem file_elem;
 };
 
-// lock for file system operations
-struct lock filesys_lock;
+// // lock for file system operations
+// struct lock filesys_lock;
 
 void syscall_init (void);
 void handle_sys_exit (int error_status);
