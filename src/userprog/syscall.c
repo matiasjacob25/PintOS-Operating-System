@@ -346,7 +346,10 @@ handle_sys_write(int fd, char *buf_addr, unsigned size)
   else 
     {
       struct file *file = get_open_file(fd);
-      // only write to file if it is not being executed elsewhere.
+      if (file != NULL && file->inode->data.is_dir)
+        handle_sys_exit(-1);
+      // only write to file if it is not being executed elsewhere and is not
+      // a directory.
       if (file != NULL && file->deny_write == false)
         bytes_written = file_write(file, buf_addr, size);
       else

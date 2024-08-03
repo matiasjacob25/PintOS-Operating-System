@@ -127,7 +127,7 @@ bool is_dir, off_t initial_size)
     thread_current()->cwd = dir_open_root();
 
   // determine relative versus absolute path.
-  if (pathname[0] == "/")
+  if (name[0] == '/')
     dir = dir_open_root();
   else 
     dir = thread_current()->cwd;
@@ -153,10 +153,16 @@ bool is_dir, off_t initial_size)
       if (inode == NULL)
       {
         block_sector_t inode_sector = 0;
-        bool success = (dir != NULL
-                        && free_map_allocate (1, &inode_sector)
-                        && inode_create (inode_sector, initial_size, is_dir)
-                        && dir_add (dir, token, inode_sector));
+        //testing
+        bool temp0 = dir != NULL;
+        bool temp1 = free_map_allocate (1, &inode_sector);
+        bool temp2 = inode_create (inode_sector, initial_size, is_dir);
+        bool temp3 = dir_add (dir, token, inode_sector);
+        bool success = temp0 && temp1 && temp2 && temp3;
+        // bool success = (dir != NULL
+        //                 && free_map_allocate (1, &inode_sector)
+        //                 && inode_create (inode_sector, initial_size, is_dir)
+        //                 && dir_add (dir, token, inode_sector));
         if (!success && inode_sector != 0) 
           free_map_release (inode_sector, 1);
         dir_lookup(dir, token, &inode);
@@ -174,7 +180,10 @@ bool is_dir, off_t initial_size)
     dir_lookup(dir, token, &inode);
     dir_close(dir);
     if (!(inode->data.is_dir))
-      PANIC("Intermediate pathname is NOT a directory");
+    {
+      inode = NULL;
+      goto done;
+    }
     else
     {
       dir = dir_open(inode);
