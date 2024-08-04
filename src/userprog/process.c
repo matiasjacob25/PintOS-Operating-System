@@ -134,9 +134,15 @@ process_wait (tid_t child_tid UNUSED)
   if (!is_child || !c->is_first_wait)
     return -1;
   
-  // block current process until child process exits
-  c->is_first_wait = false;
-  sema_down(&cur->sem_children_wait);
+  // If child has not already exited, block current process until child 
+  // process exits.
+  if (!c->has_exited)
+  {
+    c->is_first_wait = false;
+    cur->waiting_on_pid = child_tid;
+    sema_down(&cur->sem_children_wait);
+    cur->waiting_on_pid = -1;
+  }
 
   // return exit status of child process
   int status = c->exit_status;
@@ -178,9 +184,24 @@ process_exit (void)
     }
 
   // unblock parent process (who is waiting on current process to terminate) 
-  // and add them to ready_list.
-  if (cur->parent)
+  // and add them to ready_list. Otherwise, mark child as exited.
+  if (cur->parent->waiting_on_pid == cur->tid)
     sema_up(&cur->parent->sem_children_wait);
+  else
+  {
+    struct list_elem *e = NULL;
+    for (e = list_begin(&cur->parent->children);
+         e != list_end(&cur->parent->children); 
+         e = list_next(e))
+      {
+        c = list_entry(e, struct child, child_elem);
+        if (c->pid == cur->tid)
+          {
+            c->has_exited = true;
+            break;
+          }
+      }
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

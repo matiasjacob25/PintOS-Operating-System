@@ -122,6 +122,9 @@ struct thread
     struct file *exec_file;
     // pointer to thread's current working directory.
     struct dir *cwd;
+
+    // pid of child that thread is currently waiting on.
+    tid_t waiting_on_pid;
   };
 
 /* A child process.
@@ -138,6 +141,8 @@ struct child {
   struct list_elem child_elem;
   // whether child process is being waited on for the first time
   bool is_first_wait;
+  // whether child process has exited
+  bool has_exited;
 };
 
 /* If false (default), use round-robin scheduler.
