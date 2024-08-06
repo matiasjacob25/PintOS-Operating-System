@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Jacob Matias jacob.matias@mail.utoronto.ca
+Maria Gotcheva maria.gotcheva@mail.utoronto.ca
+Jerry Han jerrym.han@mail.utoronto.ca
 
 ---- PRELIMINARIES ----
 
@@ -30,13 +30,99 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct inode_disk 
+{
+  …
+
+  + uint32_t unused[111];               
+	Space that is unused in the block sector where the struct is stored.
+
+  + block_sector_t blocks[10];          
+  Array of pointers to the blocks where the files’s data is. First 8 pointers 
+  are direct, 9th and 10th are indirect and doubly indirect respectively.
+
+  + uint32_t direct_index;
+  Index of the next available direct pointer to write to in the blocks[10] 
+  array.
+
+  + uint32_t indirect_index;            
+  Index of the next free direct pointer to write to within the block pointed 
+  to by the indirect pointer in the block[10] array.
+
+  + uint32_t d_indirect_index;
+  An index value equal to the total number of direct block pointers used by 
+  the double indirect block and its nested indirect blocks.
+
+  + bool is_dir;
+	True, if inode is a directory. False, if inode is a file.
+}
+Struct storing on-disk inode data for a file or directory, including data 
+block locations and size.
+
+struct inode 
+{
+	…
+
+  + struct lock lock;
+  A lock used for synchronization of inode operations.
+}
+
+struct thread
+{
+  …
+
+ 	+ struct dir *cwd;
+	Pointer to thread's current working directory.
+
+  + tid_t waiting_on_pid;
+  pid of child that thread is currently waiting on.
+};
+
+struct child
+{
+	…
+
+  + bool has_exited;
+  True, if child process has exited. False, if child process has not exited.
+};
+
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+Each inode contains a blocks array that stores a max of 10 blocks 
+pointers: 8 direct block pointers, 1 indirect block pointer and 1 double 
+indirect pointer.
+
+1 direct block pointer points to a block size of 512 bytes. 
+=> 512 bytes
+
+1 indirect block pointer points to a block that can contain 128 direct 
+block pointers.
+=> 128 * (512) bytes
+
+1 double indirect block pointer points to a block that contains 128 indirect 
+block pointers.
+=> 128 * (128 * 512) bytes
+
+Thus, 
+max_file_size = (8 * 512) + (1 * 128 * 512) + (1 * 128 * 128 * 512) bytes 
+              = 8,458,240 bytes.
 
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
+
+Synchronization for file extension is handled by a struct inode’s lock field. 
+If processA writes to some file and inode_write_at() determines that the 
+file_write operation requires more blocks for the inode to write to, then 
+before making a call to inode_grow(), processA acquires the file inode’s lock. 
+Thus, if processB were to also perform another write operation to the same 
+inode which requires allocation of more inode blocks, it will get blocked when 
+trying to acquire the inode->lock and will only be able to continue once 
+processA releases inode->lock at the end of the inode_write_at() operation 
+(at which point inode_grow() has already finished allocating new blocks).
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -45,12 +131,47 @@ FirstName LastName <email@domain.example>
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
 
+When processA reads a file, it acquires the file’s inode->lock before the 
+filesys_read() operation and releases inode->lock after the filesys_read() 
+operation.
+
+When processB performs a write operation, it acquires file’s inode->lock 
+before invoking the inode_grow() function (within the inode_write_at() 
+function) to allocate more blocks for inode, and releases inode->lock just 
+before exiting the inode_write_at() function.
+
+Suppose processA acquires first, then processB cannot extend the file until 
+processA finishes reading. Moreover, processA will only read the contents in 
+the file that existed before processB’s write operation.
+
+Suppose processB acquires first, then processA cannot read the file until 
+processB finishes writing all of its data into the file. Once the write 
+operation is completed, processA can perform its read, in which it will 
+read all the new data added by processB.
+
+In both cases, processA does not read data other than what B writes.
+
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
 >> or vice versa.  That is, many processes reading from a file cannot
 >> prevent forever another process from writing the file, and many
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
+
+Our per-inode synchronization design provides fairness because both writers 
+and readers are treated equally when trying to acquire the inode->lock. That 
+is to say that if processA writes first, then processB must wait to read, or 
+alternatively if processB reads first, then processA must wait to write. In 
+both cases readers cannot indefinitely block writers (and vice-versa), because 
+processA’s read (or write) operation eventually finishes, then allows processB 
+to perform its write operation (or read operation). 
+
+It’s worth noting that this is the case for our design because our design 
+utilizes a round-robin policy for thread scheduling, whereas other scheduling 
+policies may prioritize threads performing read operations higher than thread 
+performing write operations (or vice-versa) when added to the inode->lock’s 
+wait list.
+
 
 ---- RATIONALE ----
 
@@ -59,6 +180,26 @@ FirstName LastName <email@domain.example>
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+Yes, our inode structure is a multilevel index with 8 direct block pointers, 
+1 indirect  block pointer, and 1 double indirect  block pointer.
+
+We chose a combination that consisted primarily of direct block pointers 
+because referencing sector values in indirect and double indirect blocks 
+is expensive. In particular, referencing sector values within indirect blocks 
+or double indirect blocks requires us to first read in the block from disk, 
+whereas the sector value for direct block pointers can be referenced directly 
+via memory.
+
+Moreover, we chose to provide 8 direct block pointers because we felt 
+that 8 * 512 bytes worth of space would be enough space for the system to 
+perform those smaller file operations on the inodes which we believe make 
+up the majority of file operations.
+
+Finally, we chose to include only 1 indirect block pointer and 1 double 
+indirect block pointer because we anticipated (based on project4 requirements) 
+that the largest files we’d be handling would be up to 8MB in size, which is 
+already supported by 1 double indirect block pointer. 
 
                 SUBDIRECTORIES
                 ==============
@@ -69,10 +210,14 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+n/a
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+n/a
 
 ---- SYNCHRONIZATION ----
 
@@ -81,15 +226,21 @@ FirstName LastName <email@domain.example>
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+n/a
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+n/a
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+n/a
 
 
                SURVEY QUESTIONS
